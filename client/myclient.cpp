@@ -3,7 +3,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>                         // for sockaddr_in  
 #include <sys/types.h>                          // for socket  
-#include <sys/stat.h> 
+#include <sys/stat.h>
+#include <sys/wait.h> 
 #include <sys/socket.h>                         // for socket    
 #include <stdlib.h>    
 #include <memory.h>
@@ -20,7 +21,6 @@ using namespace std;
 #define PID_NUM PTHREAD_NUM
 #define IP "10.123.5.46"
 #define SERVER_PORT 9248
-#define HOME_DIR "/cygdrive/f/myclient/client"
 
 #define FILE_NAME_MAX_SIZE  512
 #define BUFFER_SIZE  512
@@ -206,16 +206,12 @@ void mychdir(int client_socketfd)
     int status = 0;
     dir[0] = '\0';
 
-    sprintf(dir, "%s/%d", HOME_DIR, client_socketfd);
+    sprintf(dir, "%d", client_socketfd);
     status = chdir(dir);
     if (-1 == status)
     {
         cout << "chdir failed" << endl;
         return;
-    }
-    else
-    {
-        cout << "chdir success" << endl;
     }
 }
 
@@ -223,13 +219,11 @@ void mychdir(int client_socketfd)
 void recv_reply(int client_socketfd)
 {
     char recvbuf[BUFFER_SIZE];
-    char sendbuf[BUFFER_SIZE];  
-   
-    recvbuf[0] = '\0';
-    sendbuf[0] = '\0';
-    
+    char sendbuf[BUFFER_SIZE];   
     int length = 0;
     int firsttime = true;
+    recvbuf[0] = '\0';
+    sendbuf[0] = '\0';
 
     mymkdir(client_socketfd);
     mychdir(client_socketfd);
@@ -320,14 +314,13 @@ void fork_proc()
         cout << "Connect to server failed! pid:" << getpid() << endl; 
     }
     recv_reply(client_socketfd);
-
-    return 0;
 }
 int main(int argc, char *argv[])
 {
     //pthread_t id; 
     int i = 0;
     pid_t child_pid;
+    int stat_val;
 
     #if 0
     /*创建1000个线程*/
@@ -349,19 +342,18 @@ int main(int argc, char *argv[])
 	    child_pid = fork();
         if (child_pid == 0)
 	    {
-            
+            fork_proc();
             exit(0);
 	    }   
 	    else if(child_pid > 0)
 	    {
-            fork_proc();
     	}
         else
         {
             cout << "errno:" << errno << endl;
         }
     }
-    sleep(60);
+    wait(&stat_val);
     return 0;
 }
    
