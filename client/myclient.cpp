@@ -181,32 +181,28 @@ void recv_reply(int client_socketfd)
     }
 }
 #endif
-void mymkdir(int client_socketfd)
+void mymkdir()
 {   
     int status = 0;
     char buffer[BUFFER_SIZE];    
     buffer[0] = '\0';
     
-    sprintf(buffer, "%d", client_socketfd);
+    sprintf(buffer, "%d", getpid());
     status = mkdir(buffer, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
     if (-1 == status)
     {
-        if (EEXIST != errno)
-        {
-            cout << "mkdir failed! i:" << getpid();
-        }
+        cout << "mkdir failed! i:" << getpid() << "errno:" << errno << endl;
     }
-
     
 }
 
-void mychdir(int client_socketfd)
+void mychdir()
 {
     char dir[BUFFER_SIZE]; 
     int status = 0;
     dir[0] = '\0';
 
-    sprintf(dir, "%d", client_socketfd);
+    sprintf(dir, "%d", getpid());
     status = chdir(dir);
     if (-1 == status)
     {
@@ -225,15 +221,15 @@ void recv_reply(int client_socketfd)
     recvbuf[0] = '\0';
     sendbuf[0] = '\0';
 
-    mymkdir(client_socketfd);
-    mychdir(client_socketfd);
+    mymkdir();
+    mychdir();
       
     while(true)
     {
         ofstream log;
         log.open("error_log.txt", ios::app);
 
-        sprintf(sendbuf, "pid:%x, send", getpid());
+        sprintf(sendbuf, "pid:%d, send", getpid());
         if (0 >= send(client_socketfd, sendbuf, BUFFER_SIZE, 0))
         {
             log << "send failed. pid:" << getpid() << "\r\n";
