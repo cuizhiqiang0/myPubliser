@@ -1,7 +1,7 @@
 /*
  * =====================================================================================
  *
- *       Filename:  UpdateData.h
+ *       Filename:  GetInfo.h
  *
  *    Description:  
  *
@@ -16,14 +16,14 @@
  * =====================================================================================
  */
 
-#ifndef __UPDATEDATA_H__
-#define __UPDATEDATA_H__
+#ifndef __GETINFO_H__
+#define __GETINFO_H__
 
 #include "IAction.h"
 
 USING_ASYNCFRAME_NS;
 
-class CUpdateData
+class CGetInfo
 : public IAction
 {
     public:

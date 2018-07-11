@@ -6,9 +6,12 @@
 USING_ASYNCFRAME_NS;
 
 #define STATE_FINISHED 				0
+#define STATE_RECV_JOB              1
+#if 0
 #define STATE_WAITING 				1   //作为守护进程等待任务下发
 #define STATE_RECV_JOB 				2	 //接收到管理者下发的一个任务请求
 #define STATE_PUBLISH_JOB 			3	 //把任务下发给客户端
+#endif
 typedef struct rsp_pkg
 {
     int mydata; //数据
@@ -31,6 +34,19 @@ enum level
 	OVERLOAD,
 	ERROR_MAX,
 };
+
+class CMsg
+    : public CMsgBase
+{
+    public:
+        CMsg(): input_byte_len(0), recv_byte_count(0) {};
+        char input_buff[1024]; //管理员的输入
+        int input_byte_len;
+        char recv_buff[4096]; //客户端回复的数据
+        int recv_byte_count;
+};
+
+
 class replyMsg : public CSyncMsg 
 {
 public:

@@ -1,7 +1,7 @@
 /*
  * =====================================================================================
  *
- *       Filename:  GetState.cpp
+ *       Filename:  JobPublish.cpp
  *
  *    Description:  
  *
@@ -16,8 +16,8 @@
  * =====================================================================================
  */
 
-#include "UpdateState.h"
-#include "UpdateData.h"
+#include "JobPublish.h"
+#include "JobInfo.h"
 #include "ActionInfo.h"
 #include "AsyncFrame.h"
 #include "CommDef.h"
@@ -28,6 +28,7 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
         CActionSet *pActionSet,
         CMsgBase *pMsg) 
 {
+    /*向所有连接的客户端发包*/
     static CUpdateData UpdateData;
 
     CActionInfo *pAction1 = new CActionInfo(512);

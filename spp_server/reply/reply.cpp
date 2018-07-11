@@ -1,4 +1,3 @@
-#include <iostream>
 #include <sppincl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -6,9 +5,10 @@
 
 #include "replyMsg.h"
 #include "RecvJobState.h"
-
-
+#include <iostream>
+#include <string.h>
 using namespace std;
+
 char *format_time( time_t tm)
 {
     static char str_tm[1024];
@@ -34,27 +34,20 @@ int Init(CAsyncFrame* pFrame, CMsgBase* pMsg)
 
 int Fini(CAsyncFrame* pFrame, CMsgBase* pMsg)
 {
-    //CAsyncFrame *pFrame = (CAsyncFrame *)arg1;
-	# if 0
 	CMsg *msg = (CMsg *) pMsg;
-    pFrame->FRAME_LOG( LOG_DEBUG,
-                       "uin: %d, level: %d, coin: %d, seed_num: %d, gain_num: %d, result: %d\n",
-                       msg->uin, msg->level, msg->coin, msg->seed_num, msg->gain_num, msg->result);
-	#endif
-	pFrame->FRAME_LOG( LOG_DEBUG, "FINI");
+    
+    pFrame->FRAME_LOG( LOG_DEBUG, "FINI ： recv data len: %d", msg->recv_byte_count);
     std::string info;
     pMsg->GetDetailInfo(info);
     pFrame->FRAME_LOG( LOG_DEBUG, "%s\n", info.c_str());
 
-    rsp_pkg pkg;
-    pkg.mydata = RETURN_TO_ADMIN;
-    pkg.level = SERVER;
-
     blob_type rspblob;
-    rspblob.data = (char *)&pkg;
-    rspblob.len = sizeof(pkg);
-	cout << "fini：send to client. data  mydata:" << pkg.mydata << "level:" << pkg.level << endl;
-	pFrame->FRAME_LOG( LOG_DEBUG, "fini：send to client. data  mydata: %d, level:%d", pkg.mydata, pkg.level);
+    rspblob.data = msg->recv_buff;
+    rspblob.len = msg->recv_byte_count;
+
+	cout << "fini：send to client. data:" << rspblob.data << "length:" << rspblob.len << endl;
+	pFrame->FRAME_LOG( LOG_DEBUG, 
+        "fini：send to client. data %s, level:%d", rspblob.data, rspblob.len);
     pMsg->SendToClient(rspblob);
 
     return 0;
@@ -62,21 +55,17 @@ int Fini(CAsyncFrame* pFrame, CMsgBase* pMsg)
 
 int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
 {
-    //CAsyncFrame *pFrame = (CAsyncFrame *)arg1;
-    //CMsg *msg = (CMsg *) pMsg;
-
     pFrame->FRAME_LOG( LOG_DEBUG, "Overload.\n" );
-
-    rsp_pkg pkg;
-    pkg.mydata = OVERLOAD;
-    pkg.level = SERVER;
-
+    char overload_str[] = "overload happens";
 
     blob_type rspblob;
-    rspblob.data = (char *)&pkg;
-    rspblob.len = sizeof(pkg);
-	cout << "fini：send to client. data  mydata:" << pkg.mydata
-		 << "level:" << pkg.level << endl;
+    rspblob.data = overload_str;
+    rspblob.len = strlen(overload_str);
+
+	cout << "overload：send to client. data  mydata:" << rspblob.data
+		 << "length:" << rspblob.len << endl;
+    pFrame->FRAME_LOG( LOG_DEBUG, 
+        "overloaded：send to client. data %s, level:%d", rspblob.data, rspblob.len);
     pMsg->SendToClient(rspblob);
 
     return 0;
@@ -96,29 +85,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_init, config:%s, servertype:%d\n", etc, base->servertype());
 
     if (base->servertype() == SERVER_TYPE_WORKER)
-    {
-    	#if 0
-		/*自动化生成的是同步的框架，这里改成异步的*/
-        /* 初始化框架 */
-        int iRet = CSyncFrame::Instance()->InitFrame(base, 100000);
-        if (iRet < 0)
-        {
-            base->log_.LOG_P_PID(LOG_FATAL, "Sync framework init failed, ret:%d\n", iRet);
-            return -1;
-        }
-		
-		/* 业务自身初始化 */
-		// ......
-		#endif
-		
-        CPollerUnit* pPollerUnit = SPP_ASYNC::GetPollerUnit();
-        CTimerUnit* pTimerUnit = SPP_ASYNC::GetTimerUnit();
-
-        base->log_.LOG_P(LOG_DEBUG, "init AsyncFrame, PollerUnit: %p, TimerUnit: %p\n",
-                pPollerUnit, pTimerUnit);
-
-        CAsyncFrame::Instance()->InitFrame(base, pPollerUnit, pTimerUnit, 100); 
-       
+    {	
         /*初始化异步框架*/
         CAsyncFrame::Instance()->InitFrame2(base, 100, 0); 
 
@@ -146,14 +113,18 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
  */
 extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
 {
+    //数据块对象，结构请参考tcommu.h
     blob_type* blob = (blob_type*)arg1;
+    //extinfo有扩展信息
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
+    //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
 
-    base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s\n",
+    base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",
                      flow,
                      blob->len,
-                     inet_ntoa(*(struct in_addr*)&extinfo->remoteip_));
+                     inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
+                     format_time(extinfo->recvtime_));
 
 	cout << "handle input! flow:" << flow << " data:" << blob->data << endl;
 
@@ -194,14 +165,16 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
     CServerBase* base  = (CServerBase*)arg2;
     CTCommu    * commu = (CTCommu*)blob->owner;
 
-	char reply[40] = "this is reply to admin";
-    base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %d, %d, %s\n",
+	//char reply[40] = "this is reply to admin";
+    base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %d, %d, %s, %s\n",
                          flow,
                          blob->len,
-                         inet_ntoa(*(struct in_addr*)&extinfo->remoteip_));
+                         inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
+                         format_time(extinfo->recvtime_));
 
     /* 简单的单发单收模型示例  */
-    replyMsg *msg = new replyMsg;
+    //replyMsg *msg = new replyMsg;
+    CMsg *msg = new CMsg;
     if (!msg) 
 	{
         blob_type respblob;
@@ -218,12 +191,18 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
     msg->SetServerBase(base);
     msg->SetTCommu(commu);
     msg->SetFlow(flow);
-	//msg->SetInfoFlag(true);
+	msg->SetInfoFlag(true);
     //msg->SetMsgTimeout(100);
     msg->SetMsgTimeout(0);
-    msg->SetReqPkg(reply, sizeof(reply)); /* 微线程有独立空间,这里要拷贝一次报文 */
+    memcpy(msg->input_buff, blob->data, blob->len);
+    msg->input_byte_len = blob->len;
+    
+    base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %s, %d\n",
+                                    msg->input_buff,
+                                    msg->input_byte_len);
+    //msg->SetReqPkg(reply, sizeof(reply)); /* 微线程有独立空间,这里要拷贝一次报文 */
 
-    CSyncFrame::Instance()->Process(msg);
+    CAsyncFrame::Instance()->Process( msg );
 
     return 0;
 }
@@ -242,7 +221,9 @@ extern "C" void spp_handle_fini(void* arg1, void* arg2)
 
     if ( base->servertype() == SERVER_TYPE_WORKER )
     {
-        CSyncFrame::Instance()->Destroy();
+        CAsyncFrame::Instance()->FiniFrame();
+        //CSyncFrame::Instance()->Destroy();
+        CAsyncFrame::Destroy();
     }
 }
 
