@@ -45,7 +45,7 @@ $(OBJ_DIR)/%$(OBJ_EXT): %$(CSRC_EXT)
 
 all:$(TARGET)
 
-$(TARGET) : $(OBJ)
+$(TARGET) : $(OBJ_DIR)/JobInfo.o $(OBJ_DIR)/JobPublish.o $(OBJ_DIR)/replyMsg.o $(OBJ_DIR)/reply.o
 	@echo
 	@echo "Building $^ ==> $@..."
 	@-mkdir -p $(LIB_DIR)

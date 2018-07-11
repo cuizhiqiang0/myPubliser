@@ -18,6 +18,12 @@ typedef struct rsp_pkg
 	int level; //管理员还是客户端
 } rsp_pkg;
 
+typedef struct ConnectedClient
+{
+	unsigned client_ip;
+	unsigned clienr_port;
+	int 	 client_type;
+}CONCLIENT;
 enum data
 {
 	ADMIN_PUB = 1,
@@ -25,14 +31,19 @@ enum data
 	RETURN_TO_ADMIN,
 	ERROR_DATA_MAX,
 };
-
+enum ClientType
+{
+	NORMAL_CLIENT = 1,	
+	ADMIN_CLIENT,
+	ERROR_TYPE_MAX,
+};
 enum level
 {
 	CLIENT = 2,
 	ADMIN,
 	SERVER,
 	OVERLOAD,
-	ERROR_MAX,
+	ERROR_LEVEL_MAX,
 };
 
 class CMsg

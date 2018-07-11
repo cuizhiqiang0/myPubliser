@@ -23,7 +23,7 @@
 
 USING_ASYNCFRAME_NS;
 
-class CGetInfo
+class CJobInfo
 : public IAction
 {
     public:

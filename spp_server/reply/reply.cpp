@@ -4,10 +4,13 @@
 #include <arpa/inet.h>
 
 #include "replyMsg.h"
-#include "RecvJobState.h"
+#include "JobPublish.h"
 #include <iostream>
 #include <string.h>
+#include <list>
 using namespace std;
+
+list<CONCLIENT> gConnectClient;
 
 char *format_time( time_t tm)
 {
@@ -86,6 +89,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
 
     if (base->servertype() == SERVER_TYPE_WORKER)
     {	
+        /*这个地方还要起一个定时器*/
         /*初始化异步框架*/
         CAsyncFrame::Instance()->InitFrame2(base, 100, 0); 
 
@@ -94,7 +98,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
         CAsyncFrame::Instance()->RegCallback(CAsyncFrame::CBType_Overload, OverloadProcess);
 
         //CAsyncFrame::Instance()->AddState(STATE_WAITING, new CWaitingState);
-        CAsyncFrame::Instance()->AddState(STATE_RECV_JOB, new CRecvJobState);
+        CAsyncFrame::Instance()->AddState(STATE_RECV_JOB, new CJobPublise);
         //CAsyncFrame::Instance()->AddState(STATE_PUBLISH_JOB, new CJobPublise);
     }
     
@@ -119,7 +123,22 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
-
+	try
+	{
+		CONCLIENT *client = new CONCLIENT;
+		client->client_ip = extinfo->remoteip_;
+		client->clienr_port = extinfo->remoteport_;
+		/*fix-me根据报文的内容来确定连接类型*/
+		client->client_type = PUBLISH_TO_CLIENT;
+		/*fix-me避免管理员被多次添加到连接中*/
+		gConnectClient.push_back(*client);
+	}catch(bad_alloc &e)
+	{
+		cout << "new failed!" << endl; 
+		base->log_.LOG_P(LOG_ERROR, "spp_handle_input, new failed %s\n",
+                     format_time(extinfo->recvtime_));
+	}
+	
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",
                      flow,
                      blob->len,

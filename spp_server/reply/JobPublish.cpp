@@ -15,20 +15,50 @@
  *
  * =====================================================================================
  */
+#include <iostream>
+#include <list>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
+#include "replyMsg.h"
 #include "JobPublish.h"
 #include "JobInfo.h"
 #include "ActionInfo.h"
 #include "AsyncFrame.h"
 #include "CommDef.h"
-#include "msg.h"
 
+using namespace std;
+
+extern list<CONCLIENT> gConnectClient;
 
 int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
         CActionSet *pActionSet,
         CMsgBase *pMsg) 
 {
+	list<CONCLIENT>::iterator itera;
+	int i = 1;
     /*向所有连接的客户端发包*/
+	for (itera = gConnectClient.begin(), i = 1; itera != gConnectClient.end(); itera++)
+	{
+		if (NORMAL_CLIENT == itera->client_type)
+	 	{
+			static CJobInfo jobData;
+		
+			CActionInfo *pAction = new CActionInfo(512);
+		    pAction->SetID(i);
+		    pAction->SetDestIp(inet_ntoa(*(struct in_addr*)&(itera->client_ip)));
+		    pAction->SetDestPort(itera->clienr_port);
+		    pAction->SetProto(ProtoType_TCP);
+		    pAction->SetActionType(ActionType_SendRecv_KeepAliveWithPending);
+		    pAction->SetTimeout(200);
+		    pAction->SetIActionPtr((IAction *)&jobData);
+
+   			pActionSet->AddAction(pAction);
+		}
+		
+	}
+    #if 0
     static CUpdateData UpdateData;
 
     CActionInfo *pAction1 = new CActionInfo(512);
@@ -41,7 +71,7 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
     pAction1->SetIActionPtr((IAction *)&UpdateData);
 
     pActionSet->AddAction(pAction1);
-
+    #endif
     return 0;
 }
 
@@ -49,6 +79,12 @@ int CJobPublise::HandleProcess(CAsyncFrame *pFrame,
         CActionSet *pActionSet,
         CMsgBase *pMsg)
 {
+	CMsg *msg = (CMsg *)pMsg;
+    pFrame->FRAME_LOG( LOG_DEBUG, "HandleProcess:");
+	cout << "HandleProcess:" << endl;
+    
+    return STATE_FINISHED;
+    #if 0
     CMsg *msg = (CMsg *)pMsg;
     int err1 = 0 ;
     int cost1 = 0;
@@ -89,11 +125,5 @@ int CJobPublise::HandleProcess(CAsyncFrame *pFrame,
 
         }
     }
-
-    /*
-    pFrame->FRAME_LOG( LOG_DEBUG, 
-            "uin: %d, level: %d, coin: %d, err1: %d, cost1: %d, size1: %d, err2: %d, cost2: %d, size2: %d, action_num: %u\n", 
-            msg->uin, msg->level, msg->coin, err1, cost1, size1, err2, cost2, size2, action_set.size());
-    */
-    return STATE_ID_FINISHED;
+    #endif
 }
