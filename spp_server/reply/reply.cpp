@@ -42,7 +42,7 @@ int Fini(CAsyncFrame* pFrame, CMsgBase* pMsg)
     pFrame->FRAME_LOG( LOG_DEBUG, "FINI ： recv data len: %d", msg->recv_byte_count);
     std::string info;
     pMsg->GetDetailInfo(info);
-    pFrame->FRAME_LOG( LOG_DEBUG, "%s\n", info.c_str());
+    pFrame->FRAME_LOG( LOG_DEBUG, "info:%s\n", info.c_str());
 
     blob_type rspblob;
     rspblob.data = msg->recv_buff;
@@ -194,6 +194,7 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
     /* 简单的单发单收模型示例  */
     //replyMsg *msg = new replyMsg;
     CMsg *msg = new CMsg;
+	#if 0
     if (!msg) 
 	{
         blob_type respblob;
@@ -204,7 +205,7 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
 
         return -1;
     }
-
+	#endif
 	cout << "recv data:" << blob->data << endl;
     /* 设置m信息*/
     msg->SetServerBase(base);

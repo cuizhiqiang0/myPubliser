@@ -82,7 +82,9 @@ int CJobPublise::HandleProcess(CAsyncFrame *pFrame,
 	CMsg *msg = (CMsg *)pMsg;
     pFrame->FRAME_LOG( LOG_DEBUG, "HandleProcess:");
 	cout << "HandleProcess:" << endl;
-    
+	char replybuf[] = "this is reply";
+    memcpy(msg->recv_buff, replybuf, sizeof(replybuf));
+	msg->recv_byte_count = sizeof(replybuf);
     return STATE_FINISHED;
     #if 0
     CMsg *msg = (CMsg *)pMsg;
