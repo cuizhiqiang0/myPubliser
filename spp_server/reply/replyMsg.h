@@ -45,6 +45,19 @@ enum level
 	OVERLOAD,
 	ERROR_LEVEL_MAX,
 };
+	char *format_time( time_t tm)
+	{
+		static char str_tm[1024];
+		struct tm tmm;
+		memset(&tmm, 0, sizeof(tmm) );
+		localtime_r((time_t *)&tm, &tmm);
+	
+		snprintf(str_tm, sizeof(str_tm), "[%04d-%02d-%02d %02d:%02d:%02d]",
+				tmm.tm_year + 1900, tmm.tm_mon + 1, tmm.tm_mday,
+				tmm.tm_hour, tmm.tm_min, tmm.tm_sec);
+	
+		return str_tm;
+	}
 
 class CMsg
     : public CMsgBase

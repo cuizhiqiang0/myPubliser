@@ -29,8 +29,7 @@
 #include "CommDef.h"
 
 using namespace std;
-
-extern list<CONCLIENT> gConnectClient;
+extern char *format_time( time_t tm);
 
 int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
         CActionSet *pActionSet,
@@ -38,13 +37,20 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
 {
 	list<CONCLIENT>::iterator itera;
 	int i = 1;
+	cout << "connected num:" << gConnectClient.size() << endl; 
     /*向所有连接的客户端发包*/
+	
 	for (itera = gConnectClient.begin(), i = 1; itera != gConnectClient.end(); itera++)
 	{
 		if (NORMAL_CLIENT == itera->client_type)
 	 	{
 			static CJobInfo jobData;
-		
+
+			pFrame->FRAME_LOG( LOG_DEBUG, \
+                "JobPublise：find client. ip<%s>, port<%s>", inet_ntoa(*(struct in_addr*)&(itera->client_ip)), itera->clienr_port);	
+			cout << "JobPublise：find client. ip:<" << inet_ntoa(*(struct in_addr*)&(itera->client_ip)) \
+				 << ">, port:<" <<  itera->clienr_port << ">" << endl;
+			
 			CActionInfo *pAction = new CActionInfo(512);
 		    pAction->SetID(i);
 		    pAction->SetDestIp(inet_ntoa(*(struct in_addr*)&(itera->client_ip)));
@@ -58,6 +64,7 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
 		}
 		
 	}
+
     #if 0
     static CUpdateData UpdateData;
 

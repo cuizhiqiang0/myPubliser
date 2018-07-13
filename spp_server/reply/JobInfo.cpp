@@ -20,6 +20,8 @@
 #include "replyMsg.h"
 #include "sppincl.h"
 #include <stdio.h>
+#include <iostream>
+using namespace std;
 
 
 // 请求打包
@@ -37,9 +39,9 @@ int CJobInfo::HandleEncode( CAsyncFrame *pFrame,
     memcpy(buf, msg->input_buff, msg->input_byte_len);
     len = msg->input_byte_len;
 
-    printf("CJobInfo::HandleEncode. send len: %d\n", len);
+    cout << "CJobInfo::HandleEncode. send buf: <" << buf << ">, len<" << len << ">" << endl;
 	
-    pFrame->FRAME_LOG(LOG_DEBUG, "CJobInfo::HandleEncode. send len: %d\n", len);
+    pFrame->FRAME_LOG(LOG_DEBUG, "CJobInfo::HandleEncode. send buf<%s>,len:<%d>\n", buf, len);
     return 0;
 }
 
@@ -50,7 +52,8 @@ int CJobInfo::HandleInput( CAsyncFrame *pFrame,
         CMsgBase *pMsg)
 {
     CMsg *msg = (CMsg*)pMsg;
-    printf("CJobInfo::HandleInput. buf len: %d;\n", len);
+    cout << "CJobInfo::HandleInput. buf:<" << buf << ">,len<" << len << "> "  << endl;
+	
     pFrame->FRAME_LOG( LOG_DEBUG, "CJobInfo::HandleInput.buf:%s, CMSinput_buf:%s, CMSoutput_buf:%s, len: %d;\n",\
         buf, msg->input_buff, msg->recv_buff, len);
 
@@ -70,7 +73,7 @@ int CJobInfo::HandleProcess( CAsyncFrame *pFrame,
     CMsg *msg = (CMsg*)pMsg;
     char prefix[] = "\nGetInfo Recv: ";
 
-    printf("msg recv_buf:%s, buf%s", msg->recv_buff, buf);
+    printf("CJobInfo HandleProcess. msg recv_buf:%s, buf%s", msg->recv_buff, buf);
     pFrame->FRAME_LOG(LOG_DEBUG, "CJobInfo::Handleprocess recvbuf:%s || buf:%s\n", 
                                   msg->recv_buff, buf);
 
@@ -78,6 +81,7 @@ int CJobInfo::HandleProcess( CAsyncFrame *pFrame,
     msg->recv_byte_count += strlen(prefix);
     memcpy(&(msg->recv_buff[msg->recv_byte_count]), buf, len);
     msg->recv_byte_count += len;
+	
     msg->recv_buff[msg->recv_byte_count] = '\0';
 
     printf( "CJobInfo::HandleProcess. buf len: %d; %s\n", 

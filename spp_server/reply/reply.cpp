@@ -47,7 +47,7 @@ int Fini(CAsyncFrame* pFrame, CMsgBase* pMsg)
     blob_type rspblob;
     rspblob.data = msg->recv_buff;
     rspblob.len = msg->recv_byte_count;
-
+	cout << "connected num:" << gConnectClient.size()  << endl;
 	cout << "fini：send to client. data:" << rspblob.data << "length:" << rspblob.len << endl;
 	pFrame->FRAME_LOG( LOG_DEBUG, 
         "fini：send to client. data %s, level:%d", rspblob.data, rspblob.len);
@@ -74,6 +74,15 @@ int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
     return 0;
 }
 
+int time_task_demo(int sid, void* cookie, void* server)
+{
+	//void* user_arg = cookie;
+	//CServerBase* base = (CServerBase*)server;
+
+	printf("sid: %d, timeout [%lu]\n", sid, time(NULL));
+	return 0;
+}
+
 /**
  * @brief 业务模块初始化插件接口（可选实现proxy,worker）
  * @param arg1 - 配置文件
@@ -90,6 +99,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     if (base->servertype() == SERVER_TYPE_WORKER)
     {	
         /*这个地方还要起一个定时器*/
+	    //SPP_ASYNC::CreateTmSession(1, 10000, time_task_demo, NULL);
         /*初始化异步框架*/
         CAsyncFrame::Instance()->InitFrame2(base, 100, 0); 
 
@@ -123,29 +133,34 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
+	cout << "spp_handle_input_1: size:" << gConnectClient.size() << endl;
 	try
 	{
+	    cout << "add gConnected" << endl;
 		CONCLIENT *client = new CONCLIENT;
 		client->client_ip = extinfo->remoteip_;
 		client->clienr_port = extinfo->remoteport_;
 		/*fix-me根据报文的内容来确定连接类型*/
-		client->client_type = PUBLISH_TO_CLIENT;
+		client->client_type = NORMAL_CLIENT;
 		/*fix-me避免管理员被多次添加到连接中*/
 		gConnectClient.push_back(*client);
 	}catch(bad_alloc &e)
 	{
 		cout << "new failed!" << endl; 
-		base->log_.LOG_P(LOG_ERROR, "spp_handle_input, new failed %s\n",
+		base->log_.LOG_P(LOG_ERROR, "spp_handle_input, new failed %s\n",\
                      format_time(extinfo->recvtime_));
 	}
 	
-    base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",
-                     flow,
-                     blob->len,
-                     inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
+	cout << "spp_handle_input_2: size:" << gConnectClient.size() << endl;
+
+    base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",\
+                     flow,\
+                     blob->len,\
+                     inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),\
                      format_time(extinfo->recvtime_));
 
-	cout << "handle input! flow:" << flow << " data:" << blob->data << endl;
+	cout << "handle input! flow:" << flow << " data:" << blob->data << "time:" << 
+		             format_time(extinfo->recvtime_) << endl;
 
     return blob->len;
 }
@@ -159,9 +174,14 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
  */
 extern "C" int spp_handle_route(unsigned flow, void* arg1, void* arg2)
 {
+	//数据块对象，结构请参考tcommu.h
+    blob_type* blob = (blob_type*)arg1;
+    //extinfo有扩展信息
+    TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
 	//服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_route, %d\n", flow);
+	cout << "spp_handle_route。 time:" << format_time(extinfo->recvtime_) << endl;
 	#if 0
 	int route_no = 2;
     return GROUPID(route_no);
@@ -206,7 +226,8 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
         return -1;
     }
 	#endif
-	cout << "recv data:" << blob->data << endl;
+	cout << "recv data:" << blob->data << "time" << format_time(extinfo->recvtime_) << endl;
+	
     /* 设置m信息*/
     msg->SetServerBase(base);
     msg->SetTCommu(commu);
@@ -222,7 +243,7 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
                                     msg->input_byte_len);
     //msg->SetReqPkg(reply, sizeof(reply)); /* 微线程有独立空间,这里要拷贝一次报文 */
 
-    CAsyncFrame::Instance()->Process( msg );
+    CAsyncFrame::Instance()->Process(msg);
 
     return 0;
 }

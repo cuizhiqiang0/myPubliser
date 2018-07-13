@@ -17,7 +17,7 @@
 
 using namespace std;
 
-#define PTHREAD_NUM 1000    
+#define PTHREAD_NUM 1    
 #define PID_NUM PTHREAD_NUM
 #define IP "10.123.5.46"
 #define SERVER_PORT 9248
@@ -229,7 +229,7 @@ void recv_reply(int client_socketfd)
         ofstream log;
         log.open("error_log.txt", ios::app);
 
-        sprintf(sendbuf, "pid:%d, send", getpid());
+        sprintf(sendbuf, "pid:%d,this is admin  send", getpid());
         if (0 >= send(client_socketfd, sendbuf, BUFFER_SIZE, 0))
         {
             log << "send failed. pid:" << getpid() << "\r\n";

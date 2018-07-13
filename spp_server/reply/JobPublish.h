@@ -19,8 +19,12 @@
 #ifndef __JOBPUBLISH_H__
 #define __JOBPUBLISH_H__
 #include "IState.h"
+#include "replyMsg.h"
+#include <list>
 
 USING_ASYNCFRAME_NS;
+
+extern list<CONCLIENT> gConnectClient;
 
 class CJobPublise
     : public IState
