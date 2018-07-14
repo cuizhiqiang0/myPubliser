@@ -12,6 +12,9 @@ USING_ASYNCFRAME_NS;
 #define STATE_RECV_JOB 				2	 //接收到管理者下发的一个任务请求
 #define STATE_PUBLISH_JOB 			3	 //把任务下发给客户端
 #endif
+
+/*定时器的时间间隔毫秒*/
+#define TIME_INTERVAL   20000
 typedef struct rsp_pkg
 {
     int mydata; //数据
@@ -45,20 +48,13 @@ enum level
 	OVERLOAD,
 	ERROR_LEVEL_MAX,
 };
-	char *format_time( time_t tm)
-	{
-		static char str_tm[1024];
-		struct tm tmm;
-		memset(&tmm, 0, sizeof(tmm) );
-		localtime_r((time_t *)&tm, &tmm);
 	
-		snprintf(str_tm, sizeof(str_tm), "[%04d-%02d-%02d %02d:%02d:%02d]",
-				tmm.tm_year + 1900, tmm.tm_mon + 1, tmm.tm_mday,
-				tmm.tm_hour, tmm.tm_min, tmm.tm_sec);
-	
-		return str_tm;
-	}
-
+class myMsg
+{
+	public:
+		char ip[20];
+		//int port;
+};
 class CMsg
     : public CMsgBase
 {

@@ -238,7 +238,7 @@ void recv_reply(int client_socketfd)
         {
             log << "send successed. pid:" << getpid() << "\r\n";
         }
-        
+        #if 0 
         while(length = recv(client_socketfd, recvbuf, sizeof(recvbuf), 0))  
         {  
             if (length < 0)  
@@ -257,7 +257,10 @@ void recv_reply(int client_socketfd)
 
             bzero(recvbuf, 1024);  
 
-        }  
+        }
+        #endif
+        recv(client_socketfd, recvbuf, sizeof(recvbuf), 0);
+        cout << "recvbuf" << recvbuf << endl;
         log.close();
     }
     
@@ -290,16 +293,37 @@ void *thread(void *ptr)
 
 void fork_proc()
 {
-    struct sockaddr_in server_addr;
+    struct sockaddr_in server_addr; 
+    struct sockaddr_in client_addr;
+
     int client_socketfd = 0;
 
     memset(&server_addr, 0, sizeof(server_addr));
+    memset(&client_addr, 0, sizeof(client_addr));
 
     client_socketfd = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socketfd < 0)
     {
         cout << "Create socket fd failed！pid:" << getpid() << endl; 
+        return ;
     }
+    client_addr.sin_family = AF_INET;
+    client_addr.sin_port = htons(9244);
+    if (bind(client_socketfd, (struct sockaddr *)&client_addr, sizeof(client_addr) ))
+    {
+        cout << "bind socket error" << endl;
+        return ;
+    }
+    #if 0
+    int nREUSEADDR = 1; 
+    setsockopt(client_socketfd, 
+              SOL_SOCKET, 
+              SO_REUSEADDR, 
+              (const char *)&nREUSEADDR, 
+              sizeof(int ));
+    int keepAlive = 1;
+    setsockopt(client_socketfd, SOL_SOCKET, SO_KEEPALIVE, (void*)&keepAlive, sizeof(keepAlive));
+    #endif
     server_addr.sin_family  = AF_INET;
     //inet_pton(AF_INET, IP, (void *)server_addr.sin_addr.s_addr);
     server_addr.sin_addr.s_addr = inet_addr(IP);

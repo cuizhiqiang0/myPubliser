@@ -11,6 +11,7 @@
 using namespace std;
 
 list<CONCLIENT> gConnectClient;
+int flow;
 
 char *format_time( time_t tm)
 {
@@ -74,11 +75,36 @@ int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
     return 0;
 }
 
-int time_task_demo(int sid, void* cookie, void* server)
+int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob, void* server)
+{
+	blob_type   * blob    = (blob_type*)data_blob;
+	
+	cout << "sessionProcfunc: data<" << blob->data << ">, proc_param<" << proc_param << ">" << endl;
+	return 0;
+}
+
+int sessionInputfunc(void* input_param, unsigned sessionId , void* blob, void* server)
+{
+	cout << "sessionInputfunc" << endl;
+	return 0;
+}
+
+
+int time_task(int sid, void* cookie, void* server)
 {
 	//void* user_arg = cookie;
 	//CServerBase* base = (CServerBase*)server;
-
+    /*加锁，读数据库，去锁， 发给客户端ip，端口， 任务， 
+    发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
+    char *buf = "Session time publish";
+ 	SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
+		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
+	myMsg *msg =  new myMsg;
+	strncpy(msg->ip, "127.0.0.1", sizeof("127.0.0.1"));
+	//msg->port= 9255;
+    SPP_ASYNC::RegSessionCallBack(2, sessionProcfunc, NULL, sessionInputfunc, NULL);
+	SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+	
 	printf("sid: %d, timeout [%lu]\n", sid, time(NULL));
 	return 0;
 }
@@ -99,7 +125,12 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     if (base->servertype() == SERVER_TYPE_WORKER)
     {	
         /*这个地方还要起一个定时器*/
-	    //SPP_ASYNC::CreateTmSession(1, 10000, time_task_demo, NULL);
+	    SPP_ASYNC::CreateTmSession(1, 20000, time_task, (void *)base);
+		#if 0
+        SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
+		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP)
+        SPP_ASYNC::RegSessionCallBack(2, sessionProcfunc, NULL, sessionInputfunc, NULL);
+		#endif
         /*初始化异步框架*/
         CAsyncFrame::Instance()->InitFrame2(base, 100, 0); 
 
@@ -152,7 +183,6 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
 	}
 	
 	cout << "spp_handle_input_2: size:" << gConnectClient.size() << endl;
-
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",\
                      flow,\
                      blob->len,\
@@ -181,7 +211,7 @@ extern "C" int spp_handle_route(unsigned flow, void* arg1, void* arg2)
 	//服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_route, %d\n", flow);
-	cout << "spp_handle_route。 time:" << format_time(extinfo->recvtime_) << endl;
+	cout << "spp_handle_route time:" << format_time(extinfo->recvtime_) << endl;
 	#if 0
 	int route_no = 2;
     return GROUPID(route_no);

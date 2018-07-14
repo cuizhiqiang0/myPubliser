@@ -17,7 +17,7 @@
  */
 #include <iostream>
 #include <list>
-#include <sys/socket.h>
+#include <sys/socket.h>  
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -35,10 +35,28 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
         CActionSet *pActionSet,
         CMsgBase *pMsg) 
 {
-	list<CONCLIENT>::iterator itera;
+	//list<CONCLIENT>::iterator itera;
 	int i = 1;
-	cout << "connected num:" << gConnectClient.size() << endl; 
+	cout << "JobPublish connected num:" << gConnectClient.size() << endl;
+	static CJobInfo jobData;
+
+	pFrame->FRAME_LOG( LOG_DEBUG, "JobPublise：find client. ");	
+	cout << "JobPublise：find client " << endl;
+	
+	CActionInfo *pAction = new CActionInfo(512);
+    pAction->SetID(i);
+    pAction->SetDestIp("10.123.5.46");
+    pAction->SetDestPort(9244);
+    pAction->SetProto(ProtoType_TCP);
+    pAction->SetActionType(ActionType_SendRecv_KeepAliveWithPending);
+    pAction->SetTimeout(200);
+    pAction->SetIActionPtr((IAction *)&jobData);
+
+	pActionSet->AddAction(pAction);
+	 
+    return 0;
     /*向所有连接的客户端发包*/
+	#if 0
 	
 	for (itera = gConnectClient.begin(), i = 1; itera != gConnectClient.end(); itera++)
 	{
@@ -64,22 +82,7 @@ int CJobPublise::HandleEncode(CAsyncFrame *pFrame,
 		}
 		
 	}
-
-    #if 0
-    static CUpdateData UpdateData;
-
-    CActionInfo *pAction1 = new CActionInfo(512);
-    pAction1->SetID(3);
-    pAction1->SetDestIp("172.25.0.29");
-    pAction1->SetDestPort(5575);
-    pAction1->SetProto(ProtoType_TCP);
-    pAction1->SetActionType(ActionType_SendRecv_KeepAliveWithPending);
-    pAction1->SetTimeout(200);
-    pAction1->SetIActionPtr((IAction *)&UpdateData);
-
-    pActionSet->AddAction(pAction1);
     #endif
-    return 0;
 }
 
 int CJobPublise::HandleProcess(CAsyncFrame *pFrame,
@@ -88,7 +91,7 @@ int CJobPublise::HandleProcess(CAsyncFrame *pFrame,
 {
 	CMsg *msg = (CMsg *)pMsg;
     pFrame->FRAME_LOG( LOG_DEBUG, "HandleProcess:");
-	cout << "HandleProcess:" << endl;
+	cout << "HandleProcess: reply: this is reply" << endl;
 	char replybuf[] = "this is reply";
     memcpy(msg->recv_buff, replybuf, sizeof(replybuf));
 	msg->recv_byte_count = sizeof(replybuf);
