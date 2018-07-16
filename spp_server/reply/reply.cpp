@@ -98,7 +98,7 @@ int time_task(int sid, void* cookie, void* server)
     发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
     char *buf = "Session time publish";
  	SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
-		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
+		   1000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
 	myMsg *msg =  new myMsg;
 	strncpy(msg->ip, "127.0.0.1", sizeof("127.0.0.1"));
 	//msg->port= 9255;
@@ -125,7 +125,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     if (base->servertype() == SERVER_TYPE_WORKER)
     {	
         /*这个地方还要起一个定时器*/
-	    SPP_ASYNC::CreateTmSession(1, 20000, time_task, (void *)base);
+	    SPP_ASYNC::CreateTmSession(1, 200000, time_task, (void *)base);
 		#if 0
         SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
 		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP)
