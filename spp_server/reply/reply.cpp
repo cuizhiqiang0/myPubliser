@@ -104,19 +104,17 @@ int time_task(int sid, void* cookie, void* server)
     /*加锁，读数据库，去锁， 发给客户端ip，端口， 任务， 
     发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
     /*fix-me,根据读取数据库的结果，这里来调用不同的API*/
-	const char * filename = "/data/home/waltercui/file/Jane.txt";
+	const char * filename = "/data/home/waltercui/file/dou.txt";
     char * buffer;
     char buf[SIZE];
     long size, times, ans, ans1;
-	int  i, len,  filesize_foronce;
+	int  i, len, ret, filesize_foronce;
     ifstream file(filename, ios::in|ios::binary|ios::ate);
     size = file.tellg();
+	
     file.seekg(0, ios::beg);
     cout << "size:" << size << endl;
-    buffer = new char [size];
-	
-    file.read(buffer, size);
-    file.close();
+    buffer = new char [size + 512];
 
  	SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
 		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
@@ -126,7 +124,7 @@ int time_task(int sid, void* cookie, void* server)
 
 	/*ver:1, filetrans:A, fileend: E*/
 	
-	len = strlen("Jane.txt");
+	len = strlen("dou.txt");
 	printf("len<%x>", len);
 
 	filesize_foronce = int(SIZE - 5 - len);
@@ -140,16 +138,45 @@ int time_task(int sid, void* cookie, void* server)
 	times = ans + ans1;
 	printf("times<%d>\n", times); 
 
-	memset(buf, 0, SIZE);
 	buf[0] = 0xFF;
 	buf[1] = 0xEE;
-	buf[2] = 0x1E;
-	buf[3] = len >> 8;
-	buf[4] = len & 0xFF;
-	memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
-	memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
-	SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
-
+	buf[2] = 0x1A;
+	buf[3] = len & 0xFF;//文件名长度
+	memcpy(buf + 4, "dou.txt", strlen("dou.txt"));
+	buf[4 + len] = (size >> 24) & 0xFF;//内容长度
+	buf[5 + len] = (size >> 16) & 0xFF;
+ 	buf[6 + len] = (size >> 8) & 0xFF;
+	buf[7 + len] = size & 0xFF;	
+	
+	//memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+	ret = SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+	{
+		if (0 != ret)
+		{
+			printf("send file head failed. ret<%d>, i<%d>", ret, i);
+		}
+	}
+	
+	buffer[0] = 0xFF;
+	buffer[1] = 0xEE;
+	buffer[2] = 0x1E;
+	buffer[3] = len & 0xFF;//文件名长度
+	memcpy(buffer + 4, "dou.txt", strlen("dou.txt"));
+	buffer[4 + len] = (size >> 24) & 0xFF;//内容长度
+	buffer[5 + len] = (size >> 16) & 0xFF;
+ 	buffer[6 + len] = (size >> 8) & 0xFF;
+	buffer[7 + len] = size & 0xFF;
+	
+	file.read(buffer + 8 + len, size);
+    file.close();
+	//memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+	ret = SPP_ASYNC::SendData(2, buffer, size + 512, (void*)msg);
+	{
+		if (0 != ret)
+		{
+			printf("send file failed. ret<%d>, i<%d>", ret, i);
+		}
+	}
 	#if 0
 	for (i = 0; i < 3; i++)
 	{
@@ -178,7 +205,13 @@ int time_task(int sid, void* cookie, void* server)
 
 		}
 	    //printf("buf<%s>\n", buf);
-		SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+		ret = SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+		{
+			if (0 != ret)
+			{
+				printf("send failed. ret<%d>, i<%d>", ret, i);
+			}
+		}
 	}
 	#endif
 	printf("sid: %d, timeout [%lu]\n", sid, time(NULL));

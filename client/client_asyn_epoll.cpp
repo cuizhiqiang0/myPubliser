@@ -28,7 +28,10 @@ static char *policyXML="<cross-domain-policy><allow-access-from domain=/"*/" to-
 static char *policeRequestStr="<policy-file-request/>";
 #endif
 static char *replybuf="this is client epoll answer";
-
+bool firsttime = true;
+char filename[BUFFER_SIZE];
+long filesize, recvtotal;
+char *file;
 int CreateTcpListenSocket();
 int InitEpollFd();
 void UseConnectFd(int sockfd);
@@ -274,6 +277,8 @@ int CreateTcpListenSocket()
 	//设置SO_REUSEADDR选项(服务器快速重起)
 	optval = 0x1;
 	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void *)&optval, sizeof(optval));
+	int nRecvBuf=320*1024;//设置为320K
+	setsockopt(sockfd ,SOL_SOCKET, SO_RCVBUF,(const char*)&nRecvBuf,sizeof(int));
 	/*
 	//设置SO_LINGER选项(防范CLOSE_WAIT挂住所有套接字)
 	optval1.l_onoff = 0;
@@ -360,117 +365,149 @@ void UseConnectFd(int sockfd)
 	char recvBuff[buffer_size];
 	char buff[511];
 	int recvNum = 0;
-	
+	int filenamelen, i, type;
+	bool continuerecv = false;
+//	char *file;
 	int buff_size = buffer_size*10;
 	//char *buff=(char*)calloc(1,buff_size);
 	memset(recvBuff, 0, buffer_size);
+	memset(filename, 0 , buffer_size);
 	ofstream log;
-    	log.open("dou.txt", ios::app);
+    //log.open("dou.txt", ios::app);
 
 	bzero(recvBuff, sizeof(recvBuff));  
-	#if 0
-	int length = 0;  
-	while (length = recv(sockfd, recvBuff, buffer_size, 0))
-	{
-		if (length < 0)  
-		{  
-			//printf("errno:<%d>\n", errno);
-			if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
-			{//ETIMEDOUT可能导致SIGPIPE
-				continue;
-			}
-			else
-			{
-				printf("error");
-				return;
-			}
-		}  
-		else if (length == 0)
-		{
-			printf("Recieve Data closed!\n");  
-			close(sockfd);
-			break;
-		}
-		
-		printf("recv:<%s>\n", recvBuff);			
-
-		#if 0
-		int write_length = fwrite(buffer, sizeof(char), length, fp);  
-		if (write_length < length)  
-		{  
-			printf("File:\t%s Write Failed!\n", file_name);  
-			break;  
-		}
-		#endif
-		//log << recvBuff; 
-		bzero(recvBuff, buffer_size);  
-	}
-	#endif
+	
 	
 	while(1)
 	{
-		memset(recvBuff,'0',buffer_size);
-		recvNum = recv(sockfd, recvBuff, buffer_size, MSG_DONTWAIT);
-
-		if ( recvNum < 0) 
+		if (firsttime)
 		{
-		    if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
-		    {//ETIMEDOUT可能导致SIGPIPE
-				continue;
+			printf("head recv\n");
+			memset(recvBuff,'0',buffer_size);
+			recvNum = recv(sockfd, recvBuff, buffer_size, MSG_DONTWAIT); 
+			if ( recvNum < 0) 
+			{
+				printf("errno:<%d>", errno);
+				if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+				{//ETIMEDOUT可能导致SIGPIPE
+					continue;
+				}
+				else
+				{
+					printf("errno<%d>\n", errno);
+					break;
+				}
+			} 
+			else if (recvNum == 0) 
+			{
+				printf("num = 0\n");
+				close(sockfd);
+				break;
+			}
+	        recvtotal = 0;
+
+			type = (int)(recvBuff[2] & 0x0F);
+			filenamelen = (int)(recvBuff[3] & 0xFF);
+			printf("head type<%d>, namelen<%d>", type, filenamelen);
+			for(i = 0; i<15; i++)printf("<%x>", recvBuff[i]);
+			memset(filename, 0, BUFFER_SIZE);
+			memcpy(filename, recvBuff + 4, filenamelen);
+			if (type == 0xA)
+			{
+				/*头部*/
+				printf("file head, filename<%s>", filename);
+				filesize = (long)(recvBuff[4 + filenamelen] << 24) + (long)(recvBuff[5 + filenamelen] << 16) + (long)(recvBuff[6 + filenamelen] << 8) + (long)(recvBuff[7+filenamelen] & 0xFF);
+				printf("filesize<%ld>\n", filesize);
+				file = new char [filesize + 512];
+				firsttime = false;
+			}
+			break;
+		}
+		else
+		{
+			printf("body recv, file<%x>\n", file);
+			//memset(file,'0',filesize + 512);
+			memset(file, 0, filesize + 512);
+		    recvNum = recv(sockfd, file, filesize + 512, MSG_DONTWAIT);
+			if ( recvNum < 0) 
+			{
+				printf("num < 0, errno<%d>\n", errno);
+				if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+				{//ETIMEDOUT可能导致SIGPIPE
+				
+					continue;
+				}
+				else
+				{
+					printf("errno<%d>\n", errno);
+					break;
+				}
+			} 
+			else if (recvNum == 0) 
+			{
+				printf("recv num = 0\n");
+				close(sockfd);
+				break;
+			}
+
+			recvtotal += recvNum;
+			printf("recv num<%d>, total<%d>\n", recvNum, recvtotal);
+			if (!continuerecv)
+			{
+				type = (int)(file[2] & 0x0F);
+				filenamelen = (int)(file[3] & 0xFF);
+				printf("body type<%d>, namelen<%d>", type, filenamelen);
+				for(i = 0; i < 15; i++)
+				{
+					printf("<%x>", file[i]);
+				}
+				memset(filename, 0, BUFFER_SIZE);
+				memcpy(filename, file + 4, filenamelen);
+				if (type == 0xE)
+				{
+					/*头部*/
+					printf("file head, filename<%s>", filename);
+					filesize = (long)(file[4 + filenamelen] << 24) + (long)(file[5 + filenamelen] << 16) + (long)(file[6 + filenamelen] << 8) + (long)(file[7+filenamelen] & 0xFF);
+					printf("filesize<%ld>\n", filesize);
+					char *tmp = new char [filesize];
+					memcpy(tmp, file + 8 + filenamelen, filesize);
+					log.open(filename, ios::app);
+					log << tmp;
+					log.close();
+					if (recvtotal < filesize + 8 + filenamelen)
+					{
+						continuerecv = true;
+						firsttime = false;
+						continue;
+					}
+				}
 			}
 			else
 			{
-				printf("errno<%d>\n", errno);
-				break;
+				log.open(filename, ios::app);
+				log << file;
+				log.close();
+				if (recvtotal < filesize)
+				{
+					continuerecv = true;
+					firsttime = false;
+					continue;
+				}
+				else 
+				{ 
+					continuerecv = false;
+					firsttime = true;
+				}
 			}
-		} 
-		else if (recvNum == 0) 
-		{
-			close(sockfd);
+			
 			break;
 		}
-		//printf("recvbuff before:<%s>, len<%d>\n",recvBuff, recvNum);
-		//数据超过预定大小，则重新分配内存
-		#if 0
-		if(recvNum + strlen(buff) > buff_size)
-		{
-			printf("realoc");
-			if((buff=(char*)realloc(buff,buff_size+strlen(buff)))==NULL)
-			{
-				break;
-			}
-		}
-	    
-		
-		recvBuff[recvNum]='\0';
-		#endif
-		//sprintf(buff,"%s%s",buff,recvBuff);
-		//printf("recvbuff:<%s>\n",buff);
-		
-		memcpy(buff, recvBuff, buffer_size - 1);
-        log << buff;
-		break;
-		#if 0
-		if(recvNum < buffer_size)
-		{	
-			break;
-		}
-		#endif
 	}
-	
-	log.close();
-
-	//if(recvBuff[0]=='0')printf("%s\n",buff);
-	
-	#if 0
-	if(strcmp(buff,policeRequestStr)==0)
+	if (type == 0xE)
 	{
-		sendMsg(sockfd, policyXML);
-	}else if(strlen(buff)>0){
-		sendMsg(sockfd,buff);
-	}
-	#endif 
-	sendMsg(sockfd, replybuf);
+		sendMsg(sockfd, replybuf);
+	} 
+
 	//free(buff);
 	//printf("message: %s /n", recvBuff);
 }
