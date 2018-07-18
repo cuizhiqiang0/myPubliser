@@ -14,7 +14,6 @@
 #include <vector>
 #include <iomanip>
 #include <errno.h>
-
 using namespace std;
 
 #define PTHREAD_NUM 1    
@@ -361,3 +360,25 @@ int main(int argc, char *argv[])
     return 0;
 }
    
+
+
+int safe_tcp_recv (int sockfd, void *buf, int bufsize)
+{
+    int cur_len;
+    recv_again:
+        cur_len = recv (sockfd, buf, bufsize, 0);
+        //closed by client
+        if (cur_len == 0)
+        {
+            TRACE_LOG ("connection closed by peer, fd=%d", sockfd);
+         return 0;
+        }
+        else if (cur_len == -1)
+        {
+            if (errno == EINTR)
+                 goto recv_again;
+            else
+                 ERROR_LOG ("recv error, fd=%d, errno=%d %d", sockfd, errno);
+        }
+        return cur_len;
+}

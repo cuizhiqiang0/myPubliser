@@ -2,12 +2,18 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#include "replyMsg.h"
-#include "JobPublish.h"
+#include <assert.h>
+#include <unistd.h>
+#include <fstream>
 #include <iostream>
 #include <string.h>
 #include <list>
+
+#include "replyMsg.h"
+#include "JobPublish.h"
+
+
+#define SIZE 512
 using namespace std;
 
 list<CONCLIENT> gConnectClient;
@@ -78,15 +84,16 @@ int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
 int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob, void* server)
 {
 	blob_type   * blob    = (blob_type*)data_blob;
-	
-	cout << "sessionProcfunc: data<" << blob->data << ">, proc_param<" << proc_param << ">" << endl;
+	myMsg       * param = (myMsg *)proc_param;
+ 	cout << "sessionProcfunc: data<" << blob->data << ">,  param<" << param->ip << ">" << endl;
 	return 0;
 }
 
 int sessionInputfunc(void* input_param, unsigned sessionId , void* blob, void* server)
 {
-	cout << "sessionInputfunc" << endl;
-	return 0;
+	blob_type	*newblob	  = (blob_type*)blob;
+	cout << "sessioninputfunc: data<" << newblob->data << ">, proc_param<" << server << ">" << endl;
+	return newblob->len;
 }
 
 
@@ -96,16 +103,87 @@ int time_task(int sid, void* cookie, void* server)
 	//CServerBase* base = (CServerBase*)server;
     /*加锁，读数据库，去锁， 发给客户端ip，端口， 任务， 
     发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
-    char *buf = "Session time publish";
+    /*fix-me,根据读取数据库的结果，这里来调用不同的API*/
+	const char * filename = "/data/home/waltercui/file/Jane.txt";
+    char * buffer;
+    char buf[SIZE];
+    long size, times, ans, ans1;
+	int  i, len,  filesize_foronce;
+    ifstream file(filename, ios::in|ios::binary|ios::ate);
+    size = file.tellg();
+    file.seekg(0, ios::beg);
+    cout << "size:" << size << endl;
+    buffer = new char [size];
+	
+    file.read(buffer, size);
+    file.close();
+
  	SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
-		   1000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
+		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
+
 	myMsg *msg =  new myMsg;
 	strncpy(msg->ip, "127.0.0.1", sizeof("127.0.0.1"));
+
+	/*ver:1, filetrans:A, fileend: E*/
+	
+	len = strlen("Jane.txt");
+	printf("len<%x>", len);
+
+	filesize_foronce = int(SIZE - 5 - len);
 	//msg->port= 9255;
     SPP_ASYNC::RegSessionCallBack(2, sessionProcfunc, NULL, sessionInputfunc, NULL);
+
+	/*fix-me循环发，每次发4K* */
+	ans = (long)(size / filesize_foronce);
+    ans1 = (long)(size % filesize_foronce == 0) ? 0 : 1;
+	printf("size<%d>, SIZE<%d>, ans<%d>, an2<%d>\n", size, filesize_foronce, ans, ans1);
+	times = ans + ans1;
+	printf("times<%d>\n", times); 
+
+	memset(buf, 0, SIZE);
+	buf[0] = 0xFF;
+	buf[1] = 0xEE;
+	buf[2] = 0x1E;
+	buf[3] = len >> 8;
+	buf[4] = len & 0xFF;
+	memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
+	memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
 	SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
-	
+
+	#if 0
+	for (i = 0; i < 3; i++)
+	{
+		if (i == times - 1)
+	    {
+			memset(buf, 0, SIZE);
+			buf[0] = 0xFF;
+			buf[1] = 0xEE;
+			buf[2] = 0x1E;
+			buf[3] = len >> 8;
+			buf[4] = len & 0xFF;
+			memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
+			memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+			
+		}
+		else
+		{
+			memset(buf, 0, SIZE);
+			buf[0] = 0xFF;
+			buf[1] = 0xEE;
+			buf[2] = 0x1A;
+			buf[3] = len >> 8;
+			buf[4] = len & 0xFF;
+			memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
+			memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+
+		}
+	    //printf("buf<%s>\n", buf);
+		SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+	}
+	#endif
 	printf("sid: %d, timeout [%lu]\n", sid, time(NULL));
+	    
+    //delete[] buffer;
 	return 0;
 }
 
@@ -125,7 +203,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     if (base->servertype() == SERVER_TYPE_WORKER)
     {	
         /*这个地方还要起一个定时器*/
-	    SPP_ASYNC::CreateTmSession(1, 200000, time_task, (void *)base);
+	    SPP_ASYNC::CreateTmSession(1, TIME_INTERVAL, time_task, (void *)base);
 		#if 0
         SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
 		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP)
@@ -164,6 +242,7 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
+	#if 0
 	cout << "spp_handle_input_1: size:" << gConnectClient.size() << endl;
 	try
 	{
@@ -183,6 +262,7 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
 	}
 	
 	cout << "spp_handle_input_2: size:" << gConnectClient.size() << endl;
+	#endif
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",\
                      flow,\
                      blob->len,\
@@ -233,31 +313,26 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
 
     CServerBase* base  = (CServerBase*)arg2;
     CTCommu    * commu = (CTCommu*)blob->owner;
-
+	char heartbeat[15];
+	heartbeat[0] = '\0';
+	
 	//char reply[40] = "this is reply to admin";
     base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %d, %d, %s, %s\n",
                          flow,
                          blob->len,
                          inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
                          format_time(extinfo->recvtime_));
-
-    /* 简单的单发单收模型示例  */
-    //replyMsg *msg = new replyMsg;
-    CMsg *msg = new CMsg;
+	cout << "recv data:" << blob->data << "time" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
+	/*fix-me,这里是心跳报文，所以直接操作数据库就可以了*/
+	strncpy(heartbeat, blob->data, blob->len);
 	#if 0
-    if (!msg) 
-	{
-        blob_type respblob;
-        respblob.data  = NULL;
-        respblob.len   = 0;
-        commu->sendto(flow, &respblob, NULL);
-        base->log_.LOG_P_PID(LOG_ERROR, "close conn, flow:%u\n", flow);
-
-        return -1;
-    }
+	assert(heartbeat[0] == 0xff && heartbeat[1] == 0xee);
+	assert();
 	#endif
-	cout << "recv data:" << blob->data << "time" << format_time(extinfo->recvtime_) << endl;
-	
+    /* 简单的单发单收模型示例  */
+    //replyMsg *msg = new replyMsg;  
+	#if 0
+	CMsg *msg = new CMsg;
     /* 设置m信息*/
     msg->SetServerBase(base);
     msg->SetTCommu(commu);
@@ -274,7 +349,7 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
     //msg->SetReqPkg(reply, sizeof(reply)); /* 微线程有独立空间,这里要拷贝一次报文 */
 
     CAsyncFrame::Instance()->Process(msg);
-
+	#endif
     return 0;
 }
 

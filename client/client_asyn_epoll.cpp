@@ -11,12 +11,13 @@
 #include <sys/wait.h>
 #include <time.h>  
 #include <sys/time.h> // 包含setitimer()函数
+#include <sys/resource.h>
 #include <signal.h>  //包含signal()函数
-  
-#if 0
-#define PORT    9244
-#endif
+#include <fstream> 
+#include <iostream>
+using namespace std;
 
+#define PORT    9255
 #define BACKLOG   100
 #define BUF_EV_LEN 150
 #define BUFFER_SIZE  512	  
@@ -157,8 +158,10 @@ int main()
 {
 	signal(SIGPIPE, SIG_IGN);
     /**/pid_t pid;
+	#if 0
     signal(SIGALRM, signal_handler);  //注册当接收到SIGALRM时会发生是么函数；
-	set_timer();  //启动定时器，
+	set_timer();  //启动定时器
+	#endif 
     //init_sigaction();
     // init_time();
     if((pid = fork()) < 0){
@@ -264,7 +267,7 @@ int CreateTcpListenSocket()
 	
 	bzero(&localAddr, sizeof(localAddr));
 	localAddr.sin_family = AF_INET;
-	localAddr.sin_port = htons(0);
+	localAddr.sin_port = htons(PORT);
 	localAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	unsigned int optval;	
@@ -353,29 +356,83 @@ int InitEpollFd()
 
 void UseConnectFd(int sockfd)
 {
-	int buffer_size=256;
-	char recvBuff[buffer_size+1];
+	int buffer_size = 512;
+	char recvBuff[buffer_size];
+	char buff[511];
 	int recvNum = 0;
-	int buff_size = buffer_size*10;
-	char *buff=(char*)calloc(1,buff_size);
 	
-	while(1)
-	{
-		//memset(recvBuff,'/0',buffer_size);
-		recvNum = recv(sockfd, recvBuff, buffer_size, MSG_DONTWAIT);
+	int buff_size = buffer_size*10;
+	//char *buff=(char*)calloc(1,buff_size);
+	memset(recvBuff, 0, buffer_size);
+	ofstream log;
+    	log.open("dou.txt", ios::app);
 
-		if ( recvNum< 0) {
-			if (errno == ECONNRESET || errno==ETIMEDOUT) {//ETIMEDOUT可能导致SIGPIPE
-				close(sockfd);
+	bzero(recvBuff, sizeof(recvBuff));  
+	#if 0
+	int length = 0;  
+	while (length = recv(sockfd, recvBuff, buffer_size, 0))
+	{
+		if (length < 0)  
+		{  
+			//printf("errno:<%d>\n", errno);
+			if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+			{//ETIMEDOUT可能导致SIGPIPE
+				continue;
 			}
-			break;
-		} else if (recvNum == 0) {
+			else
+			{
+				printf("error");
+				return;
+			}
+		}  
+		else if (length == 0)
+		{
+			printf("Recieve Data closed!\n");  
 			close(sockfd);
 			break;
 		}
 		
+		printf("recv:<%s>\n", recvBuff);			
+
+		#if 0
+		int write_length = fwrite(buffer, sizeof(char), length, fp);  
+		if (write_length < length)  
+		{  
+			printf("File:\t%s Write Failed!\n", file_name);  
+			break;  
+		}
+		#endif
+		//log << recvBuff; 
+		bzero(recvBuff, buffer_size);  
+	}
+	#endif
+	
+	while(1)
+	{
+		memset(recvBuff,'0',buffer_size);
+		recvNum = recv(sockfd, recvBuff, buffer_size, MSG_DONTWAIT);
+
+		if ( recvNum < 0) 
+		{
+		    if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+		    {//ETIMEDOUT可能导致SIGPIPE
+				continue;
+			}
+			else
+			{
+				printf("errno<%d>\n", errno);
+				break;
+			}
+		} 
+		else if (recvNum == 0) 
+		{
+			close(sockfd);
+			break;
+		}
+		//printf("recvbuff before:<%s>, len<%d>\n",recvBuff, recvNum);
 		//数据超过预定大小，则重新分配内存
-		if(recvNum+strlen(buff)>buff_size)
+		#if 0
+		if(recvNum + strlen(buff) > buff_size)
 		{
 			printf("realoc");
 			if((buff=(char*)realloc(buff,buff_size+strlen(buff)))==NULL)
@@ -384,18 +441,26 @@ void UseConnectFd(int sockfd)
 			}
 		}
 	    
-		printf("recvbuff before:<%s>\n",recvBuff);
+		
 		recvBuff[recvNum]='\0';
-		sprintf(buff,"%s%s",buff,recvBuff);
-		printf("recvbuff:<%s>\n",buff);
-
+		#endif
+		//sprintf(buff,"%s%s",buff,recvBuff);
+		//printf("recvbuff:<%s>\n",buff);
+		
+		memcpy(buff, recvBuff, buffer_size - 1);
+        log << buff;
+		break;
+		#if 0
 		if(recvNum < buffer_size)
 		{	
 			break;
 		}
+		#endif
 	}
+	
+	log.close();
 
-	if(recvBuff[0]=='0')printf("%s\n",buff);
+	//if(recvBuff[0]=='0')printf("%s\n",buff);
 	
 	#if 0
 	if(strcmp(buff,policeRequestStr)==0)
@@ -406,7 +471,7 @@ void UseConnectFd(int sockfd)
 	}
 	#endif 
 	sendMsg(sockfd, replybuf);
-	free(buff);
+	//free(buff);
 	//printf("message: %s /n", recvBuff);
 }
 
@@ -453,6 +518,8 @@ int sendMsg(int fd,char *msg)
 			break;
 		}
 	}
+
+
 	return 1;
 }
 
