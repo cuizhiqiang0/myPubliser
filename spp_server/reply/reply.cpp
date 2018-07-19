@@ -104,7 +104,7 @@ int time_task(int sid, void* cookie, void* server)
     /*加锁，读数据库，去锁， 发给客户端ip，端口， 任务， 
     发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
     /*fix-me,根据读取数据库的结果，这里来调用不同的API*/
-	const char * filename = "/data/home/waltercui/file/dou.txt";
+	const char * filename = "/data/home/waltercui/file/Jane.txt";
     char * buffer;
     char buf[SIZE];
     long size, times, ans, ans1;
@@ -124,7 +124,7 @@ int time_task(int sid, void* cookie, void* server)
 
 	/*ver:1, filetrans:A, fileend: E*/
 	
-	len = strlen("dou.txt");
+	len = strlen("Jane.txt");
 	printf("len<%x>", len);
 
 	filesize_foronce = int(SIZE - 5 - len);
@@ -142,7 +142,7 @@ int time_task(int sid, void* cookie, void* server)
 	buf[1] = 0xEE;
 	buf[2] = 0x1A;
 	buf[3] = len & 0xFF;//文件名长度
-	memcpy(buf + 4, "dou.txt", strlen("dou.txt"));
+	memcpy(buf + 4, "Jane.txt", strlen("Jane.txt"));
 	buf[4 + len] = (size >> 24) & 0xFF;//内容长度
 	buf[5 + len] = (size >> 16) & 0xFF;
  	buf[6 + len] = (size >> 8) & 0xFF;
@@ -161,14 +161,18 @@ int time_task(int sid, void* cookie, void* server)
 	buffer[1] = 0xEE;
 	buffer[2] = 0x1E;
 	buffer[3] = len & 0xFF;//文件名长度
-	memcpy(buffer + 4, "dou.txt", strlen("dou.txt"));
+	memcpy(buffer + 4, "Jane.txt", strlen("Jane.txt"));
 	buffer[4 + len] = (size >> 24) & 0xFF;//内容长度
 	buffer[5 + len] = (size >> 16) & 0xFF;
  	buffer[6 + len] = (size >> 8) & 0xFF;
 	buffer[7 + len] = size & 0xFF;
 	
 	file.read(buffer + 8 + len, size);
-    file.close();
+    	file.close();
+	for (i = 0; i < 15; i++)
+	{
+		printf("<%x>", buffer[i]);
+	}
 	//memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
 	ret = SPP_ASYNC::SendData(2, buffer, size + 512, (void*)msg);
 	{

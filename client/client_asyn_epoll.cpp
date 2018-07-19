@@ -23,6 +23,8 @@ using namespace std;
 #define BUFFER_SIZE  512	  
 #define MAX_EPOLL_FD 8000
 #define HEART_INTERVAL 10
+#define HEART_BUFFER_SIZE 10
+#define HEART_PROTOCOL "live"
 #if 0
 static char *policyXML="<cross-domain-policy><allow-access-from domain=/"*/" to-ports=/"*/"/></cross-domain-policy>";
 static char *policeRequestStr="<policy-file-request/>";
@@ -31,7 +33,7 @@ static char *replybuf="this is client epoll answer";
 bool firsttime = true;
 char filename[BUFFER_SIZE];
 long filesize, recvtotal;
-char *file;
+unsigned char *file;
 int CreateTcpListenSocket();
 int InitEpollFd();
 void UseConnectFd(int sockfd);
@@ -86,7 +88,7 @@ void signal_handler(int param)
 {  
     struct sockaddr_in server_addr;
     int client_socketfd = 0;
-    char sendbuf[BUFFER_SIZE]; 
+    char heartbuf[HEART_BUFFER_SIZE]; 
 
     memset(&server_addr, 0, sizeof(server_addr));
 
@@ -99,7 +101,7 @@ void signal_handler(int param)
 	/*fix-me通过L5获得一个最佳的ip*/
     server_addr.sin_family  = AF_INET;
     //inet_pton(AF_INET, IP, (void *)server_addr.sin_addr.s_addr);
-    server_addr.sin_addr.s_addr = inet_addr("10.123.5.46");
+    server_addr.sin_addr.s_addr = inet_addr("10.242.170.126");
     server_addr.sin_port = htons(9248);
 
     if (connect(client_socketfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
@@ -107,8 +109,11 @@ void signal_handler(int param)
         printf("Connect to server failed! \n"); 
     }
     
-	sprintf(sendbuf, "port:%d, this is heart", gport);
-	if (0 >= send(client_socketfd,sendbuf, BUFFER_SIZE, 0))
+	heartbuf[0] = 0xFF;
+	heartbuf[1] = 0xEE;
+	heartbuf[2] = 0x11;
+	memcpy(heartbuf + 3, HEART_PROTOCOL, strlen(HEART_PROTOCOL));
+	if (0 >= send(client_socketfd,heartbuf, BUFFER_SIZE, 0))
 	{
 		/*fix-me,这里如果发送失败了，就代表服务端挂掉了，这里只需要重启就行了*/
 		printf("sendfailed:\n");
@@ -362,8 +367,8 @@ int InitEpollFd()
 void UseConnectFd(int sockfd)
 {
 	int buffer_size = 512;
-	char recvBuff[buffer_size];
-	char buff[511];
+	unsigned char recvBuff[buffer_size];
+	unsigned char buff[511];
 	int recvNum = 0;
 	int filenamelen, i, type;
 	bool continuerecv = false;
@@ -418,7 +423,7 @@ void UseConnectFd(int sockfd)
 				printf("file head, filename<%s>", filename);
 				filesize = (long)(recvBuff[4 + filenamelen] << 24) + (long)(recvBuff[5 + filenamelen] << 16) + (long)(recvBuff[6 + filenamelen] << 8) + (long)(recvBuff[7+filenamelen] & 0xFF);
 				printf("filesize<%ld>\n", filesize);
-				file = new char [filesize + 512];
+				file = new unsigned char [filesize + 512];
 				firsttime = false;
 			}
 			break;
@@ -474,7 +479,7 @@ void UseConnectFd(int sockfd)
 					log.open(filename, ios::app);
 					log << tmp;
 					log.close();
-					if (recvtotal < filesize + 8 + filenamelen)
+					if (recvtotal < filesize + 512)
 					{
 						continuerecv = true;
 						firsttime = false;
@@ -487,7 +492,7 @@ void UseConnectFd(int sockfd)
 				log.open(filename, ios::app);
 				log << file;
 				log.close();
-				if (recvtotal < filesize)
+				if (recvtotal < filesize + 512)
 				{
 					continuerecv = true;
 					firsttime = false;
@@ -505,6 +510,7 @@ void UseConnectFd(int sockfd)
 	}
 	if (type == 0xE)
 	{
+		printf("send response\n");
 		sendMsg(sockfd, replybuf);
 	} 
 
