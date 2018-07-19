@@ -30,18 +30,20 @@ int CJobInfo::HandleEncode( CAsyncFrame *pFrame,
         int &len,
         CMsgBase *pMsg)
 {
+    #if 0
     /*这个地方要注意len的长度，如果小于我们需要的可以返回一个长度，然后会再次调用*/ 
     CMsg *msg = (CMsg*)pMsg;
-	if (len < msg->input_byte_len)
+    if (len < msg->input_byte_len)
     {
- 	   return msg->input_byte_len;
+        return msg->input_byte_len;
     } 
     memcpy(buf, msg->input_buff, msg->input_byte_len);
     len = msg->input_byte_len;
 
     cout << "CJobInfo::HandleEncode. send buf: <" << buf << ">, len<" << len << ">" << endl;
-	
+    
     pFrame->FRAME_LOG(LOG_DEBUG, "CJobInfo::HandleEncode. send buf<%s>,len:<%d>\n", buf, len);
+    #endif
     return 0;
 }
 
@@ -51,16 +53,17 @@ int CJobInfo::HandleInput( CAsyncFrame *pFrame,
         int len,
         CMsgBase *pMsg)
 {
+    #if 0
     CMsg *msg = (CMsg*)pMsg;
     cout << "CJobInfo::HandleInput. buf:<" << buf << ">,len<" << len << "> "  << endl;
-	
+    
     pFrame->FRAME_LOG( LOG_DEBUG, "CJobInfo::HandleInput.buf:%s, CMSinput_buf:%s, CMSoutput_buf:%s, len: %d;\n",\
         buf, msg->input_buff, msg->recv_buff, len);
 
     /*这里的完整性检查要根据报文的情况，可能收到回复的长度不对*/
     if(len == msg->input_byte_len)
         return len;
-
+    #endif
     return 0;
 }
 
@@ -70,6 +73,7 @@ int CJobInfo::HandleProcess( CAsyncFrame *pFrame,
         int len,
         CMsgBase *pMsg)
 {
+    #if 0
     CMsg *msg = (CMsg*)pMsg;
     char prefix[] = "\nGetInfo Recv: ";
 
@@ -81,14 +85,14 @@ int CJobInfo::HandleProcess( CAsyncFrame *pFrame,
     msg->recv_byte_count += strlen(prefix);
     memcpy(&(msg->recv_buff[msg->recv_byte_count]), buf, len);
     msg->recv_byte_count += len;
-	
+    
     msg->recv_buff[msg->recv_byte_count] = '\0';
 
     printf( "CJobInfo::HandleProcess. buf len: %d; %s\n", 
             len, msg->recv_buff );
     pFrame->FRAME_LOG(LOG_DEBUG, "CJobInfo::HandleProcess. buf len: %d;\n", 
             len);
-            
+    #endif       
     return 0;
 }
 

@@ -6,8 +6,11 @@
 #include <unistd.h>
 #include <fstream>
 #include <iostream>
+#include <string>
+#include <sstream>
 #include <string.h>
 #include <list>
+#include <mysql/mysql.h>
 
 #include "replyMsg.h"
 #include "JobPublish.h"
@@ -37,28 +40,22 @@ int Init(CAsyncFrame* pFrame, CMsgBase* pMsg)
 {
     //CAsyncFrame *pFrame = (CAsyncFrame *)arg1;
     //CMsg *msg = (CMsg *) arg2;
-	cout << "frame init" << endl; 
-    return STATE_RECV_JOB; 
+    cout << "frame init" << endl; 
+    return STATE_RECV_HEART; 
     //return STATE_ID_GET2;   // test L5Route Action
 }
 
 int Fini(CAsyncFrame* pFrame, CMsgBase* pMsg)
 {
-	CMsg *msg = (CMsg *) pMsg;
+    //CMsg *msg = (CMsg *) pMsg;
     
-    pFrame->FRAME_LOG( LOG_DEBUG, "FINI ： recv data len: %d", msg->recv_byte_count);
+    pFrame->FRAME_LOG( LOG_DEBUG, "FINI ： recv heart fini");
     std::string info;
     pMsg->GetDetailInfo(info);
     pFrame->FRAME_LOG( LOG_DEBUG, "info:%s\n", info.c_str());
 
-    blob_type rspblob;
-    rspblob.data = msg->recv_buff;
-    rspblob.len = msg->recv_byte_count;
-	cout << "connected num:" << gConnectClient.size()  << endl;
-	cout << "fini：send to client. data:" << rspblob.data << "length:" << rspblob.len << endl;
-	pFrame->FRAME_LOG( LOG_DEBUG, 
-        "fini：send to client. data %s, level:%d", rspblob.data, rspblob.len);
-    pMsg->SendToClient(rspblob);
+    cout << "fini：!:" << endl;
+    //pMsg->SendToClient(rspblob);
 
     return 0;
 }
@@ -72,8 +69,8 @@ int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
     rspblob.data = overload_str;
     rspblob.len = strlen(overload_str);
 
-	cout << "overload：send to client. data  mydata:" << rspblob.data
-		 << "length:" << rspblob.len << endl;
+    cout << "overload：send to client. data  mydata:" << rspblob.data
+         << "length:" << rspblob.len << endl;
     pFrame->FRAME_LOG( LOG_DEBUG, 
         "overloaded：send to client. data %s, level:%d", rspblob.data, rspblob.len);
     pMsg->SendToClient(rspblob);
@@ -83,147 +80,189 @@ int OverloadProcess(CAsyncFrame* pFrame, CMsgBase* pMsg)
 
 int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob, void* server)
 {
-	blob_type   * blob    = (blob_type*)data_blob;
-	myMsg       * param = (myMsg *)proc_param;
- 	cout << "sessionProcfunc: data<" << blob->data << ">,  param<" << param->ip << ">" << endl;
-	return 0;
+    blob_type   * blob    = (blob_type*)data_blob;
+    myMsg       * param = (myMsg *)proc_param;
+     cout << "sessionProcfunc: data<" << blob->data << ">,  param<" << param->ip << ">" << endl;
+    return 0;
 }
 
 int sessionInputfunc(void* input_param, unsigned sessionId , void* blob, void* server)
 {
-	blob_type	*newblob	  = (blob_type*)blob;
-	cout << "sessioninputfunc: data<" << newblob->data << ">, proc_param<" << server << ">" << endl;
-	return newblob->len;
+    blob_type    *newblob      = (blob_type*)blob;
+    cout << "sessioninputfunc: data<" << newblob->data << ">, proc_param<" << server << ">" << endl;
+    return newblob->len;
 }
 
 
 int time_task(int sid, void* cookie, void* server)
 {
-	//void* user_arg = cookie;
-	//CServerBase* base = (CServerBase*)server;
+    //void* user_arg = cookie;
+    //CServerBase* base = (CServerBase*)server;
     /*加锁，读数据库，去锁， 发给客户端ip，端口， 任务， 
     发送成功的等待接收回复，发送失败的不用管，因为没和这台建联。再把结果上传到服务器*/
+
+
+    #if 0
     /*fix-me,根据读取数据库的结果，这里来调用不同的API*/
-	const char * filename = "/data/home/waltercui/file/Jane.txt";
+    const char * filename = "/data/home/waltercui/file/Jane.txt";
     char * buffer;
     char buf[SIZE];
     long size, times, ans, ans1;
-	int  i, len, ret, filesize_foronce;
+    int  i, len, ret, filesize_foronce;
     ifstream file(filename, ios::in|ios::binary|ios::ate);
     size = file.tellg();
-	
+    
     file.seekg(0, ios::beg);
     cout << "size:" << size << endl;
     buffer = new char [size + 512];
 
- 	SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
-		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
+     SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
+           500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
 
-	myMsg *msg =  new myMsg;
-	strncpy(msg->ip, "127.0.0.1", sizeof("127.0.0.1"));
+    myMsg *msg =  new myMsg;
+    strncpy(msg->ip, "127.0.0.1", sizeof("127.0.0.1"));
 
-	/*ver:1, filetrans:A, fileend: E*/
-	
-	len = strlen("Jane.txt");
-	printf("len<%x>", len);
+    /*ver:1, filetrans:A, fileend: E*/
+    
+    len = strlen("Jane.txt");
+    printf("len<%x>", len);
 
-	filesize_foronce = int(SIZE - 5 - len);
-	//msg->port= 9255;
+    filesize_foronce = int(SIZE - 5 - len);
+    //msg->port= 9255;
     SPP_ASYNC::RegSessionCallBack(2, sessionProcfunc, NULL, sessionInputfunc, NULL);
 
-	/*fix-me循环发，每次发4K* */
-	ans = (long)(size / filesize_foronce);
+    /*fix-me循环发，每次发4K* */
+    ans = (long)(size / filesize_foronce);
     ans1 = (long)(size % filesize_foronce == 0) ? 0 : 1;
-	printf("size<%d>, SIZE<%d>, ans<%d>, an2<%d>\n", size, filesize_foronce, ans, ans1);
-	times = ans + ans1;
-	printf("times<%d>\n", times); 
+    printf("size<%d>, SIZE<%d>, ans<%d>, an2<%d>\n", size, filesize_foronce, ans, ans1);
+    times = ans + ans1;
+    printf("times<%d>\n", times); 
 
-	buf[0] = 0xFF;
-	buf[1] = 0xEE;
-	buf[2] = 0x1A;
-	buf[3] = len & 0xFF;//文件名长度
-	memcpy(buf + 4, "Jane.txt", strlen("Jane.txt"));
-	buf[4 + len] = (size >> 24) & 0xFF;//内容长度
-	buf[5 + len] = (size >> 16) & 0xFF;
- 	buf[6 + len] = (size >> 8) & 0xFF;
-	buf[7 + len] = size & 0xFF;	
-	
-	//memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
-	ret = SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
-	{
-		if (0 != ret)
-		{
-			printf("send file head failed. ret<%d>, i<%d>", ret, i);
-		}
-	}
-	
-	buffer[0] = 0xFF;
-	buffer[1] = 0xEE;
-	buffer[2] = 0x1E;
-	buffer[3] = len & 0xFF;//文件名长度
-	memcpy(buffer + 4, "Jane.txt", strlen("Jane.txt"));
-	buffer[4 + len] = (size >> 24) & 0xFF;//内容长度
-	buffer[5 + len] = (size >> 16) & 0xFF;
- 	buffer[6 + len] = (size >> 8) & 0xFF;
-	buffer[7 + len] = size & 0xFF;
-	
-	file.read(buffer + 8 + len, size);
-    	file.close();
-	for (i = 0; i < 15; i++)
-	{
-		printf("<%x>", buffer[i]);
-	}
-	//memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
-	ret = SPP_ASYNC::SendData(2, buffer, size + 512, (void*)msg);
-	{
-		if (0 != ret)
-		{
-			printf("send file failed. ret<%d>, i<%d>", ret, i);
-		}
-	}
-	#if 0
-	for (i = 0; i < 3; i++)
-	{
-		if (i == times - 1)
-	    {
-			memset(buf, 0, SIZE);
-			buf[0] = 0xFF;
-			buf[1] = 0xEE;
-			buf[2] = 0x1E;
-			buf[3] = len >> 8;
-			buf[4] = len & 0xFF;
-			memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
-			memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
-			
-		}
-		else
-		{
-			memset(buf, 0, SIZE);
-			buf[0] = 0xFF;
-			buf[1] = 0xEE;
-			buf[2] = 0x1A;
-			buf[3] = len >> 8;
-			buf[4] = len & 0xFF;
-			memcpy(buf + 3 + 2, "Jane.txt", strlen("Jane.txt"));
-			memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
-
-		}
-	    //printf("buf<%s>\n", buf);
-		ret = SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
-		{
-			if (0 != ret)
-			{
-				printf("send failed. ret<%d>, i<%d>", ret, i);
-			}
-		}
-	}
-	#endif
-	printf("sid: %d, timeout [%lu]\n", sid, time(NULL));
-	    
-    //delete[] buffer;
-	return 0;
+    buf[0] = 0xFF;
+    buf[1] = 0xEE;
+    buf[2] = 0x1A;
+    buf[3] = len & 0xFF;//文件名长度
+    memcpy(buf + 4, "Jane.txt", strlen("Jane.txt"));
+    buf[4 + len] = (size >> 24) & 0xFF;//内容长度
+    buf[5 + len] = (size >> 16) & 0xFF;
+     buf[6 + len] = (size >> 8) & 0xFF;
+    buf[7 + len] = size & 0xFF;    
+    
+    //memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+    ret = SPP_ASYNC::SendData(2, buf, sizeof(buf), (void*)msg);
+    {
+        if (0 != ret)
+        {
+            printf("send file head failed. ret<%d>, i<%d>", ret, i);
+        }
+    }
+    
+    buffer[0] = 0xFF;
+    buffer[1] = 0xEE;
+    buffer[2] = 0x1E;
+    buffer[3] = len & 0xFF;//文件名长度
+    memcpy(buffer + 4, "Jane.txt", strlen("Jane.txt"));
+    buffer[4 + len] = (size >> 24) & 0xFF;//内容长度
+    buffer[5 + len] = (size >> 16) & 0xFF;
+     buffer[6 + len] = (size >> 8) & 0xFF;
+    buffer[7 + len] = size & 0xFF;
+    
+    file.read(buffer + 8 + len, size);
+        file.close();
+    for (i = 0; i < 15; i++)
+    {
+        printf("<%x>", buffer[i]);
+    }
+    //memcpy(buf + 3 + 2 + len, buffer + i * filesize_foronce, filesize_foronce);
+    ret = SPP_ASYNC::SendData(2, buffer, size + 512, (void*)msg);
+    {
+        if (0 != ret)
+        {
+            printf("send file failed. ret<%d>, i<%d>", ret, i);
+        }
+    }
+    delete[] buffer;
+    #endif
+    printf("sid: %d, timeout [%lu]\n", sid, time(NULL));
+        
+  
+    return 0;
 }
 
+void heart_protocol_mysql_update(char *clientIp, unsigned int clientPort, char *serverIp)
+{
+    MYSQL             mysql;
+    MYSQL_RES         *res = NULL;
+    stringstream sqltmp, updatesqltmp;
+    string sql;
+    int state = 3;
+    int ret = 0;
+
+    if (NULL == mysql_init(&mysql))
+    {
+        printf("mysql init failed\n");
+    }
+    if (!mysql_real_connect(&mysql, "10.242.170.126", "root", "123456", "taskPublish", 0, NULL, 0))
+    {
+        printf("connect mysql failed\n");
+    }
+    
+    sqltmp << "select * from T_connect where client_ip = '" << clientIp <<"'" << " and client_port = " << clientPort<< ";" <<endl;
+    cout << "select sql: " << sqltmp.str() << endl;
+    sql = sqltmp.str();
+    ret = mysql_query(&mysql, sql.c_str());
+    if(ret)
+    {
+        printf("Error making query:<%s>, ret<%d>\n",mysql_error(&mysql), ret);
+        return;
+    }
+    else
+    {
+        printf("Query made ....t<%d>\n", ret);
+        res = mysql_use_result(&mysql);
+        if(NULL != res)
+        {
+            /*不存在这个客户端的记录，则新加入*/
+            if (NULL == mysql_fetch_row(res))
+            {
+                printf("instert:\n");
+                updatesqltmp << "insert into T_connect(client_ip, client_port, server_ip, client_state) values ('" << \
+                        clientIp << "', " << clientPort << ", '"<< serverIp << "', " << state << ");" << endl;
+                sql = updatesqltmp.str();
+                mysql_free_result(res);
+                cout << "sql:" << sql.c_str() << endl; 
+                ret = mysql_query(&mysql, sql.c_str());
+                if (0 != ret)
+                {
+                    printf("instert failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+                }
+            }
+            /*存在这个客户端的记录，则更新连接状态*/
+            else
+            {
+                printf("update:\n");
+                updatesqltmp << "update T_connect set client_state = " << state << " where client_ip = '" << clientIp << \
+                           "' and client_port = " << clientPort << ";" << endl;
+                sql = updatesqltmp.str();
+                mysql_free_result(res);
+                cout << "SQL:" << sql.c_str() << endl;
+                ret = mysql_query(&mysql, sql.c_str());
+                if (0 != ret)
+                {
+                    printf("update failed, ret<%d>, <%s>\n", ret, mysql_error(&mysql));
+                }
+            }
+        }
+        else 
+        {
+            printf("res null\n");
+            mysql_free_result(res);
+        }
+  
+   }
+   mysql_close(&mysql);
+
+}
 /**
  * @brief 业务模块初始化插件接口（可选实现proxy,worker）
  * @param arg1 - 配置文件
@@ -238,14 +277,14 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
     base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_init, config:%s, servertype:%d\n", etc, base->servertype());
 
     if (base->servertype() == SERVER_TYPE_WORKER)
-    {	
+    {    
         /*这个地方还要起一个定时器*/
-	    SPP_ASYNC::CreateTmSession(1, TIME_INTERVAL, time_task, (void *)base);
-		#if 0
+        SPP_ASYNC::CreateTmSession(1, TIME_INTERVAL, time_task, (void *)base);
+        #if 0
         SPP_ASYNC::CreateSession(2, "custom", "tcp_multi_con", "127.0.0.1", 9255, -1,
-		   500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP)
+           500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP)
         SPP_ASYNC::RegSessionCallBack(2, sessionProcfunc, NULL, sessionInputfunc, NULL);
-		#endif
+        #endif
         /*初始化异步框架*/
         CAsyncFrame::Instance()->InitFrame2(base, 100, 0); 
 
@@ -254,7 +293,7 @@ extern "C" int spp_handle_init(void* arg1, void* arg2)
         CAsyncFrame::Instance()->RegCallback(CAsyncFrame::CBType_Overload, OverloadProcess);
 
         //CAsyncFrame::Instance()->AddState(STATE_WAITING, new CWaitingState);
-        CAsyncFrame::Instance()->AddState(STATE_RECV_JOB, new CJobPublise);
+        CAsyncFrame::Instance()->AddState(STATE_RECV_HEART, new CJobPublise);
         //CAsyncFrame::Instance()->AddState(STATE_PUBLISH_JOB, new CJobPublise);
     }
     
@@ -279,35 +318,15 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
-	#if 0
-	cout << "spp_handle_input_1: size:" << gConnectClient.size() << endl;
-	try
-	{
-	    cout << "add gConnected" << endl;
-		CONCLIENT *client = new CONCLIENT;
-		client->client_ip = extinfo->remoteip_;
-		client->clienr_port = extinfo->remoteport_;
-		/*fix-me根据报文的内容来确定连接类型*/
-		client->client_type = NORMAL_CLIENT;
-		/*fix-me避免管理员被多次添加到连接中*/
-		gConnectClient.push_back(*client);
-	}catch(bad_alloc &e)
-	{
-		cout << "new failed!" << endl; 
-		base->log_.LOG_P(LOG_ERROR, "spp_handle_input, new failed %s\n",\
-                     format_time(extinfo->recvtime_));
-	}
-	
-	cout << "spp_handle_input_2: size:" << gConnectClient.size() << endl;
-	#endif
+
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_input, %d, %d, %s, %s\n",\
                      flow,\
                      blob->len,\
                      inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),\
                      format_time(extinfo->recvtime_));
 
-	cout << "handle input! flow:" << flow << " data:" << blob->data << "time:" << 
-		             format_time(extinfo->recvtime_) << endl;
+    cout << "handle input! flow:" << flow << " data:" << blob->data << "time:" << 
+                     format_time(extinfo->recvtime_) << endl;
 
     return blob->len;
 }
@@ -321,19 +340,19 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
  */
 extern "C" int spp_handle_route(unsigned flow, void* arg1, void* arg2)
 {
-	//数据块对象，结构请参考tcommu.h
+    //数据块对象，结构请参考tcommu.h
     blob_type* blob = (blob_type*)arg1;
     //extinfo有扩展信息
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
-	//服务器容器对象
+    //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_route, %d\n", flow);
-	cout << "spp_handle_route time:" << format_time(extinfo->recvtime_) << endl;
-	#if 0
-	int route_no = 2;
+    cout << "spp_handle_route time:" << format_time(extinfo->recvtime_) << endl;
+    #if 0
+    int route_no = 2;
     return GROUPID(route_no);
-	#endif
-	return 1;
+    #endif
+    return 1;
 }
 
 /**
@@ -347,46 +366,40 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
 {
     blob_type   * blob    = (blob_type*)arg1;
     TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
-
     CServerBase* base  = (CServerBase*)arg2;
-    CTCommu    * commu = (CTCommu*)blob->owner;
-	char heartbeat[15];
-	heartbeat[0] = '\0';
-	
-	//char reply[40] = "this is reply to admin";
+    //CTCommu    * commu = (CTCommu*)blob->owner;
+    unsigned char heartbeat[513];
+    int i;
+    unsigned int clientPort;
+    char clientIp[20];
+    char serverIp[20];
+    heartbeat[0] = '\0';
+    
+    //char reply[40] = "this is reply to admin";
     base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %d, %d, %s, %s\n",
                          flow,
                          blob->len,
                          inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
                          format_time(extinfo->recvtime_));
-	cout << "recv data:" << blob->data << "time" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
-	/*fix-me,这里是心跳报文，所以直接操作数据库就可以了*/
-	strncpy(heartbeat, blob->data, blob->len);
-	#if 0
-	assert(heartbeat[0] == 0xff && heartbeat[1] == 0xee);
-	assert();
-	#endif
-    /* 简单的单发单收模型示例  */
-    //replyMsg *msg = new replyMsg;  
-	#if 0
-	CMsg *msg = new CMsg;
-    /* 设置m信息*/
-    msg->SetServerBase(base);
-    msg->SetTCommu(commu);
-    msg->SetFlow(flow);
-	msg->SetInfoFlag(true);
-    //msg->SetMsgTimeout(100);
-    msg->SetMsgTimeout(0);
-    memcpy(msg->input_buff, blob->data, blob->len);
-    msg->input_byte_len = blob->len;
+    cout << "recv data:" << blob->data << "|time" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
+    /*fix-me,这里是心跳报文，所以直接操作数据库就可以了*/
+    //memcpy(heartbeat, blob->data, blob->len);
     
-    base->log_.LOG_P_PID(LOG_DEBUG, "spp_handle_process, %s, %d\n",
-                                    msg->input_buff,
-                                    msg->input_byte_len);
-    //msg->SetReqPkg(reply, sizeof(reply)); /* 微线程有独立空间,这里要拷贝一次报文 */
+    printf("heart protocol:");
+    for(i = 0; i < 8; i++)
+    {
+        printf("<%x>", heartbeat[i]);
+    }
+    printf("\n");
+    printf("client ip<%s>\n",inet_ntoa(*(struct in_addr*)&extinfo->remoteip_));
+    printf("client port<%d>\n", extinfo->remoteport_);
+    printf("server ip<%s>\n", inet_ntoa(*(struct in_addr*)&extinfo->localip_));
+    clientPort =  extinfo->remoteport_;
+    strncpy(clientIp, inet_ntoa(*(struct in_addr*)&extinfo->remoteip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->remoteip_)) );
+    strncpy(serverIp, inet_ntoa(*(struct in_addr*)&extinfo->localip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->localip_)) );
 
-    CAsyncFrame::Instance()->Process(msg);
-	#endif
+    heart_protocol_mysql_update(clientIp, clientPort, serverIp);
+    
     return 0;
 }
 
@@ -420,18 +433,18 @@ extern "C" void spp_handle_fini(void* arg1, void* arg2)
  */
 extern "C" int spp_handle_report(unsigned flow, void* arg1, void* arg2)
 {
-	blob_type   * blob    = (blob_type*)arg1;
-	CReport     * rpt     = (CReport *)arg2;
+    blob_type   * blob    = (blob_type*)arg1;
+    CReport     * rpt     = (CReport *)arg2;
 
-	char *pMsg = blob->data;
-	int len = blob->len;
-	
-	uint32_t cmd = 0;
-	int ret = 0;
-	
-	rpt->set_cmd(cmd);
-	rpt->set_result(ret);
-	
-	return 0;
+    char *pMsg = blob->data;
+    int len = blob->len;
+    
+    uint32_t cmd = 0;
+    int ret = 0;
+    
+    rpt->set_cmd(cmd);
+    rpt->set_result(ret);
+    
+    return 0;
 }
 #endif

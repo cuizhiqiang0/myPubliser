@@ -10,7 +10,7 @@ int replyMsg::HandleProcess()
     //请求包
     const std::string &strReqBuff = this->GetReqPkg();
 
-    //处理过程	
+    //处理过程    
     //......
 
     //回包
@@ -20,6 +20,6 @@ int replyMsg::HandleProcess()
     
     mt_sleep(20);    
     this->SendToClient(blob);
-	
+    
     return 0;
 }

@@ -77,7 +77,7 @@ static struct itimerval oldtv;
 void set_timer()  
 {  
     struct itimerval itv;  
-    itv.it_interval.tv_sec = 1;  //设置为1秒
+    itv.it_interval.tv_sec = HEART_INTERVAL;  //设置为1秒
     itv.it_interval.tv_usec = 0;  
     itv.it_value.tv_sec = 1;  
     itv.it_value.tv_usec = 0;  
@@ -87,7 +87,10 @@ void set_timer()
 void signal_handler(int param)  
 {  
     struct sockaddr_in server_addr;
+	struct sockaddr_in connAddr;
+	socklen_t len = sizeof(connAddr);
     int client_socketfd = 0;
+	int ret = 0;
     char heartbuf[HEART_BUFFER_SIZE]; 
 
     memset(&server_addr, 0, sizeof(server_addr));
@@ -108,7 +111,11 @@ void signal_handler(int param)
     {
         printf("Connect to server failed! \n"); 
     }
-    
+
+	ret = getsockname(client_socketfd, (struct sockaddr*)&connAddr, &len);
+	printf("ret<%d>\n", ret);
+	printf("port<%d>\n", ntohs(connAddr.sin_port)); // 获取端口号
+
 	heartbuf[0] = 0xFF;
 	heartbuf[1] = 0xEE;
 	heartbuf[2] = 0x11;
@@ -166,10 +173,10 @@ int main()
 {
 	signal(SIGPIPE, SIG_IGN);
     /**/pid_t pid;
-	#if 0
+
     signal(SIGALRM, signal_handler);  //注册当接收到SIGALRM时会发生是么函数；
 	set_timer();  //启动定时器
-	#endif 
+
     //init_sigaction();
     // init_time();
     if((pid = fork()) < 0){
