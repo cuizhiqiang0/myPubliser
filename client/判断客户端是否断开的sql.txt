@@ -1,0 +1,32 @@
+存储过程
+state_minus
+DELIMITER |
+CREATE PROCEDURE state_minus()
+    BEGIN
+      update T_connect set client_state=client_state-1 where client_state > 0;
+    END
+|
+client_delete
+	DELIMITER |
+CREATE PROCEDURE client_delete()
+    BEGIN
+      delete from  T_connect where client_state = 0;
+    END
+
+
+
+事件：event_minus
+CREATE EVENT IF NOT EXISTS event_minus
+ON SCHEDULE EVERY 60 SECOND
+ON COMPLETION PRESERVE  
+DO CALL state_minus();
+
+事件：eventdelete
+CREATE EVENT IF NOT EXISTS event_delete
+ON SCHEDULE EVERY 60 SECOND
+ON COMPLETION PRESERVE  
+DO CALL client_delete();
+
+开启任务
+ALTER EVENT event_test ON  
+COMPLETION PRESERVE ENABLE; 
