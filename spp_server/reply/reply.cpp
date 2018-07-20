@@ -383,18 +383,20 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
                          format_time(extinfo->recvtime_));
     cout << "recv data:" << blob->data << "|time" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
     /*fix-me,这里是心跳报文，所以直接操作数据库就可以了*/
-    //memcpy(heartbeat, blob->data, blob->len);
+    memcpy(heartbeat, blob->data, blob->len);
     
     printf("heart protocol:");
-    for(i = 0; i < 8; i++)
+    for(i = 0; i < 11; i++)
     {
         printf("<%x>", heartbeat[i]);
     }
     printf("\n");
     printf("client ip<%s>\n",inet_ntoa(*(struct in_addr*)&extinfo->remoteip_));
-    printf("client port<%d>\n", extinfo->remoteport_);
+    //printf("client port<%d>\n", extinfo->remoteport_);
+    printf("client port<%d>\n", (int)((int)(heartbeat[3] << 8) + (int)(heartbeat[4] & 0xFF))) ;
     printf("server ip<%s>\n", inet_ntoa(*(struct in_addr*)&extinfo->localip_));
-    clientPort =  extinfo->remoteport_;
+    //clientPort =  extinfo->remoteport_;
+    clientPort =  (int)((heartbeat[3] << 8) + heartbeat[4] & 0xFF);
     strncpy(clientIp, inet_ntoa(*(struct in_addr*)&extinfo->remoteip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->remoteip_)) );
     strncpy(serverIp, inet_ntoa(*(struct in_addr*)&extinfo->localip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->localip_)) );
 

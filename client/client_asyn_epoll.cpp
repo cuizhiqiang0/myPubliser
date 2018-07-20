@@ -22,8 +22,8 @@ using namespace std;
 #define BUF_EV_LEN 150
 #define BUFFER_SIZE  512	  
 #define MAX_EPOLL_FD 8000
-#define HEART_INTERVAL 10
-#define HEART_BUFFER_SIZE 10
+#define HEART_INTERVAL 60
+#define HEART_BUFFER_SIZE 11
 #define HEART_PROTOCOL "live"
 #if 0
 static char *policyXML="<cross-domain-policy><allow-access-from domain=/"*/" to-ports=/"*/"/></cross-domain-policy>";
@@ -91,7 +91,7 @@ void signal_handler(int param)
 	socklen_t len = sizeof(connAddr);
     int client_socketfd = 0;
 	int ret = 0;
-    char heartbuf[HEART_BUFFER_SIZE]; 
+    unsigned char heartbuf[HEART_BUFFER_SIZE]; 
 
     memset(&server_addr, 0, sizeof(server_addr));
 
@@ -112,14 +112,12 @@ void signal_handler(int param)
         printf("Connect to server failed! \n"); 
     }
 
-	ret = getsockname(client_socketfd, (struct sockaddr*)&connAddr, &len);
-	printf("ret<%d>\n", ret);
-	printf("port<%d>\n", ntohs(connAddr.sin_port)); // 获取端口号
-
 	heartbuf[0] = 0xFF;
 	heartbuf[1] = 0xEE;
 	heartbuf[2] = 0x11;
-	memcpy(heartbuf + 3, HEART_PROTOCOL, strlen(HEART_PROTOCOL));
+	heartbuf[3] = (unsigned int)((gport >> 8) & 0xFF);
+	heartbuf[4] = (unsigned int)(gport & 0xFF);
+	memcpy(heartbuf + 5, HEART_PROTOCOL, strlen(HEART_PROTOCOL));
 	if (0 >= send(client_socketfd,heartbuf, BUFFER_SIZE, 0))
 	{
 		/*fix-me,这里如果发送失败了，就代表服务端挂掉了，这里只需要重启就行了*/
@@ -309,13 +307,12 @@ int CreateTcpListenSocket()
 		printf("End at: %d\n",__LINE__);
 		return -1;
 	}
-	else
-	{
-		ret = getsockname(sockfd, (struct sockaddr*)&connAddr, &len);
-		port = ntohs(connAddr.sin_port); // 获取端口号
-		printf("port:<%d>\n", port);
-		gport = port;
-	}
+	
+	ret = getsockname(sockfd, (struct sockaddr*)&connAddr, &len);
+	port = ntohs(connAddr.sin_port); // 获取端口号
+	printf("global port:<%d>\n", port);
+	gport = port;
+
     
     
 	if (listen(sockfd, BACKLOG) == -1)
