@@ -8,8 +8,15 @@ USING_ASYNCFRAME_NS;
 #define STATE_FINISHED         0
 #define STATE_RECV_HEART       1
 
-/*定时器的时间间隔毫秒*/
-#define TIME_INTERVAL   20000
+#define IF_NAME "eth1"
+
+#define SIZE 512
+
+#define IP_SIZE     20 
+
+
+/*定时器触发去读数据库中新任务的时间间隔毫秒*/
+#define TIME_INTERVAL   5000
 typedef struct rsp_pkg
 {
     int mydata; //数据
