@@ -8,13 +8,28 @@ USING_ASYNCFRAME_NS;
 #define STATE_FINISHED         0
 #define STATE_RECV_HEART       1
 
-#define IF_NAME "eth1"
+/*网卡的名字*/
+#define IF_NAME      "eth1"
+/*数据库的IP地址*/
+#define DB_HOST_IP   "10.242.170.126"
+/*数据库的用户名*/
+#define DB_USER      "root"
+/*数据库的密码*/
+#define DB_PASSWORD  "123456"
+/*数据库名字*/
+#define DB_NAME      "taskPublish"
 
-#define SIZE 512
+/*文件的目录*/
+#define FILE_DIR     "/data/home/waltercui/file/"
 
-#define IP_SIZE     20 
+/*报文一次发送的长度*/
+#define SIZE             4096
+/*ip地址的大小*/
+#define IP_SIZE          20 
+#define FILE_DIR_SIZE    80
 
-
+#define BASH_RESULT_SIZE 1000
+#define BASH_REPLY_SIZE  1500
 /*定时器触发去读数据库中新任务的时间间隔毫秒*/
 #define TIME_INTERVAL   5000
 typedef struct rsp_pkg
@@ -29,6 +44,26 @@ typedef struct ConnectedClient
     unsigned clienr_port;
     int      client_type;
 }CONCLIENT;
+
+/*任务下发的类型， 目前支持四种*/
+enum TASK_TYPE
+{
+    FILE_PUBLISH = 1,
+    CONFIG_UPDATE,
+    BASH_STRING,
+    BASH_FILE,
+};
+
+/*任务下发的结果*/
+enum TASK_PUBLISH_ANS
+{
+    PUBLISH_SUCCESS = 0,
+    WRONG_TYPE,
+    SEND_TO_CLIENT_FAILED,
+    CREATE_SESSION_FAILED,
+
+};
+    
 enum data
 {
     ADMIN_PUB = 1,
@@ -55,7 +90,8 @@ class myMsg
 {
     public:
         char ip[20];
-        //int port;
+        int port;
+        int taskId;
 };
 class CMsg
     : public CMsgBase

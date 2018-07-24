@@ -12,7 +12,7 @@
 #include <errno.h>
 #define IF_NAME "eth1"
 using namespace std;
-
+#if 0
 #define IP_SIZE     16  
 // 获取本机ip  
 int get_local_ip(const char *eth_inf, char *ip)  
@@ -262,7 +262,7 @@ void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char
     
     mysql_close(&mysql);
 }
-void task_publish_to_client( char *taskId, char *client_ip, char *local_ip)
+void task_publish_to_client( char *taskId, char *taskType, char *taskString, char *client_ip, char *local_ip)
 {
     MYSQL mysql;
     MYSQL_RES *res;
@@ -307,7 +307,7 @@ void task_publish_to_client( char *taskId, char *client_ip, char *local_ip)
                 {
                     /*对这个client下发任务，同时把这条记录增加到T_execute的数据表里*/
                     printf("task_publish_to_client:clientip<%s>, clientPort<%s>\n", row[1], row[2]);
-                    task_publish_to_client_insert_T_execute(taskId, row[1], row[2]);
+                    task_publish_to_client_insert_T_execute(taskId, row[1], row[2], taskType, taskString);
                 }
                 mysql_free_result(res);
             }
@@ -382,10 +382,113 @@ void first_test()
      mysql_close(&mysql);
 
 }
+#endif
+void update_filePublish(int taskId, char *client_ip, int client_port, bool execute_state)
+{
+    MYSQL mysql;
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    stringstream sqltmp,sqlup;
+    string sql;
+    int ret;
+
+    mysql_init(&mysql);
+    if(!mysql_real_connect(&mysql,"10.242.170.126","root",
+                     "123456","taskPublish",0,NULL,0))
+    {
+        printf("Error connecting to database:%s\n",mysql_error(&mysql));
+    }
+    else
+    {
+        printf("Connected........\n");
+    }
+
+    /*执行成功直接更新执行结果就可以了*/
+    if (execute_state)
+    {
+        sqltmp << "update T_execute set taskState = 2, finalResult = 1" << " where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+        sql = sqltmp.str();
+        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        ret = mysql_query(&mysql, sql.c_str());
+        if (0 != ret)
+        {
+            printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+        }
+        else
+        { 
+            printf("update_filePublish:update T-execute success\n");
+        }
+    }
+    /*执行不成功，查看次数是不是达到三次了，是的话就把结果置位失败*/
+    else
+    {
+        sqltmp << "select taskState, retryTimes from T_execute where taskId = "<< taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+        sql = sqltmp.str();
+        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        ret = mysql_query(&mysql, sql.c_str());
+        if(ret)
+        {
+            printf("Error making query:<%s>, ret<%d>\n",mysql_error(&mysql), ret);
+        }
+        else
+        {
+            printf("Query made ....t<%d>\n", ret);
+            res = mysql_use_result(&mysql);
+            if(NULL != res)
+            {
+                printf("res not null\n");
+                while (row = mysql_fetch_row(res))
+                {
+                    if (NULL == row)
+                    {
+                        break;
+                    }
+                    if ((0 == strcmp("3", row[0])) && (0 == strcmp("3", row[1])))
+                    {
+                        sqlup << "update T_execute set taskState = 3, finalResult = 2" << " where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+                    }
+                    else
+                    {
+                        sqlup << "update T_execute set taskState = 3" << " where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+                    }
+                    mysql_free_result(res);
+                    sql = sqlup.str();
+                    cout << "update_filePublish:sql:" << sql.c_str() << endl;
+                    ret = mysql_query(&mysql, sql.c_str());
+                    if (0 != ret)
+                    {
+                        printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+                    }
+                    else
+                    { 
+                        printf("update_filePublish:update T-execute success\n");
+                    }
+                    break;
+                }
+                
+            }
+            else 
+            {
+                printf("res null\n");
+                mysql_free_result(res);
+            }
+        }
+        
+    }
+    
+
+
+    mysql_close(&mysql);
+}
+
 int main()
 {
 
-    first_test();
-    
+    //first_test();
+    update_filePublish(1, "10.242.170.126", 9255, false);
     return 0;
  }
