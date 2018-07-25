@@ -173,7 +173,7 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
                     {
                         break;
                     }
-                    if ((0 == strcmp("3", row[0])) && (0 == strcmp("3", row[1])))
+                    if (0 == strcmp("3", row[1]))
                     {
                         sqlup << "update T_execute set taskState = 3, finalResult = 2" << " where taskId = " << taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
@@ -210,9 +210,102 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
     mysql_close(&mysql);
 }
 
-void update_bashFile()
+void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_state, unsigned char * result)
 {
+    MYSQL mysql;
+    MYSQL_RES *res;
+    MYSQL_ROW row;
+    stringstream sqltmp,sqlup;
+    string sql;
+    int ret;
 
+    mysql_init(&mysql);
+    if(!mysql_real_connect(&mysql,"10.242.170.126","root",
+                     "123456","taskPublish",0,NULL,0))
+    {
+        printf("Error connecting to database:%s\n",mysql_error(&mysql));
+    }
+    else
+    {
+        printf("Connected........\n");
+    }
+
+    /*执行成功直接更新执行结果就可以了*/
+    if (execute_state)
+    {
+        sqltmp << "update T_execute set taskState = 2, finalResult = 1, executeResult = '" << result  << "' where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+        sql = sqltmp.str();
+        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        ret = mysql_query(&mysql, sql.c_str());
+        if (0 != ret)
+        {
+            printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+        }
+        else
+        { 
+        }
+    }
+    /*执行不成功，查看次数是不是达到三次了，是的话就把结果置位失败*/
+    else
+    {
+        sqltmp << "select taskState, retryTimes from T_execute where taskId = "<< taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+        sql = sqltmp.str();
+        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        ret = mysql_query(&mysql, sql.c_str());
+        if(ret)
+        {
+            printf("Error making query:<%s>, ret<%d>\n",mysql_error(&mysql), ret);
+        }
+        else
+        {
+            printf("Query made ....t<%d>\n", ret);
+            res = mysql_use_result(&mysql);
+            if(NULL != res)
+            {
+                printf("res not null\n");
+                while ((row = mysql_fetch_row(res)))
+                {
+                    if (NULL == row)
+                    {
+                        break;
+                    }
+                    if ( 0 == strcmp("3", row[1]))
+                    {
+                        sqlup << "update T_execute set taskState = 3, finalResult = 2" << " where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+                    }
+                    else
+                    {
+                        sqlup << "update T_execute set taskState = 3" << " where taskId = " << taskId << \
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
+                    }
+                    mysql_free_result(res);
+                    sql = sqlup.str();
+                    cout << "update_filePublish:sql:" << sql.c_str() << endl;
+                    ret = mysql_query(&mysql, sql.c_str());
+                    if (0 != ret)
+                    {
+                        printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+                    }
+                    else
+                    { 
+                    }
+                    break;
+                }
+                
+            }
+            else 
+            {
+                printf("res null\n");
+                mysql_free_result(res);
+            }
+        }
+        
+    }
+    
+    mysql_close(&mysql);
 }
 void update_bashStr(int taskId, char *client_ip, int client_port, unsigned char *recvbuf)
 {
@@ -271,7 +364,7 @@ int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob,
     }
     else if (type == 0x7)
     {
-        update_bashFile();
+        update_bashFile(msg->taskId, msg->ip, msg->port, (int)(recvReply[4 + len]) == 0x1, recvReply + 7 + len);
     }
     else if (type == 0x4)
     {
@@ -573,7 +666,7 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
     if (publish_state)
     {
         sqltmp << "update T_execute set taskState = " << "1, retryTimes = " << newretryTimes << " where taskId = " << taskId << \
-                                                " ip = '" << client_ip << "' port = " << client_port << ";" << endl;
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
     }
     /*下发失败*/
     else
@@ -582,12 +675,12 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
         if (newretryTimes >= 3)
         {
             sqltmp << "update T_execute set taskState = " << "3, retryTimes = " << newretryTimes << " where taskId = " << taskId << \
-                                                " ip = '" << client_ip << "' port = " << client_port << ";" << endl;
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         }
         else
         {
             sqltmp << "update T_execute set taskState = " << "3, retryTimes = " << newretryTimes << ", finalResult = " << "2 where taskId = " << taskId << \
-                                                " ip = '" << client_ip << "' port = " << client_port << ";" << endl;
+                                                " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         }
     }
     sql = sqltmp.str();
@@ -678,7 +771,6 @@ void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char
     string sql;
     int ret;
     bool exist = false;
-    int taskState, retryTimes;
 
     mysql_init(&mysql);
     if(!mysql_real_connect(&mysql, DB_HOST_IP, DB_USER,
@@ -963,7 +1055,6 @@ void taskretry()
     MYSQL mysql;
     MYSQL_RES *res;
     MYSQL_ROW row;
-    char server_ip[IP_SIZE] = {0} ;
     stringstream ss, sqltmp;
     string sql;
     int ret;
@@ -1155,10 +1246,10 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
                      blob->len,\
                      inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),\
                      format_time(extinfo->recvtime_));
-
+    #if 0
     cout << "handle input! flow:" << flow << " data:" << blob->data << "len: " << blob->len << " |time:" << 
                      format_time(extinfo->recvtime_) << endl;
-
+    #endif
     return blob->len;
 }
 
@@ -1174,11 +1265,11 @@ extern "C" int spp_handle_route(unsigned flow, void* arg1, void* arg2)
     //数据块对象，结构请参考tcommu.h
     blob_type* blob = (blob_type*)arg1;
     //extinfo有扩展信息
-    TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
+    //TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
     CServerBase* base = (CServerBase*)arg2;
     base->log_.LOG_P(LOG_DEBUG, "spp_handle_route, %d\n", flow);
-    cout << "spp_handle_route time:" << format_time(extinfo->recvtime_) << endl;
+    //cout << "spp_handle_route time:" << format_time(extinfo->recvtime_) << endl;
     #if 0
     int route_no = 2;
     return GROUPID(route_no);
@@ -1200,7 +1291,6 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
     CServerBase* base  = (CServerBase*)arg2;
     //CTCommu    * commu = (CTCommu*)blob->owner;
     unsigned char heartbeat[SIZE + 1];
-    int i;
     unsigned int clientPort;
     char clientIp[20];
     char serverIp[20];
@@ -1212,17 +1302,10 @@ extern "C" int spp_handle_process(unsigned flow, void* arg1, void* arg2)
                          blob->len,
                          inet_ntoa(*(struct in_addr*)&extinfo->remoteip_),
                          format_time(extinfo->recvtime_));
-    cout << "recv client heartbeat" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
+    //cout << "recv client heartbeat" << format_time(extinfo->recvtime_) << "pid:" << getpid() << endl;
     /*fix-me,这里是心跳报文，所以直接操作数据库就可以了*/
     memcpy(heartbeat, blob->data, blob->len);
-    
-    printf("heart protocol:");
-    for(i = 0; i < 11; i++)
-    {
-        printf("<%x>", heartbeat[i]);
-    }
-    printf("\n");
-    //clientPort =  extinfo->remoteport_;
+  
     clientPort =  (int)((heartbeat[3] << 8) + (int)(heartbeat[4] & 0xFF));
     strncpy(clientIp, inet_ntoa(*(struct in_addr*)&extinfo->remoteip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->remoteip_)) );
     strncpy(serverIp, inet_ntoa(*(struct in_addr*)&extinfo->localip_), strlen(inet_ntoa(*(struct in_addr*)&extinfo->localip_)) );

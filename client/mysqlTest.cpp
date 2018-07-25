@@ -12,7 +12,7 @@
 #include <errno.h>
 #define IF_NAME "eth1"
 using namespace std;
-#if 0
+
 #define IP_SIZE     16  
 // 获取本机ip  
 int get_local_ip(const char *eth_inf, char *ip)  
@@ -192,7 +192,7 @@ void insertT_execute(char *taskId, char *client_ip, char *client_port)
     mysql_close(&mysql);
 }
 
-void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char* client_port)
+void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char* client_port, char *taskType, char *taskString)
 {
     MYSQL mysql;
     MYSQL_RES *res;
@@ -369,7 +369,7 @@ void first_test()
                     break;
                 }
                 /*开始增添工作，指定ip，对这个ip的客户端下发任务, 不指定ip就对所有的客户端发包*/
-                task_publish_to_client(row[0], row[3], ip);
+                task_publish_to_client(row[0], row[1], row[2], row[3], ip);
             }
             mysql_free_result(res);
          }
@@ -382,7 +382,7 @@ void first_test()
      mysql_close(&mysql);
 
 }
-#endif
+
 void update_filePublish(int taskId, char *client_ip, int client_port, bool execute_state)
 {
     MYSQL mysql;
@@ -488,7 +488,7 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
 int main()
 {
 
-    //first_test();
-    update_filePublish(1, "10.242.170.126", 9255, false);
+    first_test();
+    //update_filePublish(1, "10.242.170.126", 9255, false);
     return 0;
  }
