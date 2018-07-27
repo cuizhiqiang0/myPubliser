@@ -14,6 +14,7 @@
 #include <sys/time.h> // 包含setitimer()函数
 #include <sys/resource.h>
 #include <signal.h>  //包含signal()函数
+#include "execinfo.h"
 #include <fstream> 
 #include <iostream>
 #include "qos_client.h"
@@ -21,12 +22,12 @@
 using namespace std;
 using namespace cl5;
 
-
 #define PORT    9255
 #define BACKLOG   100
-#define BUF_EV_LEN 150
-#define BUFFER_SIZE  512      
-#define MAX_EPOLL_FD 8000
+#define BUF_EV_LEN 2
+#define BUFFER_SIZE  512
+#define FILE_NAME_SIZE 40
+#define MAX_EPOLL_FD 2
 #define HEART_INTERVAL 60
 #define HEART_BUFFER_SIZE 11
 #define HEART_PROTOCOL "live"
@@ -35,18 +36,16 @@ using namespace cl5;
 #define L5_MODID 64489857
 #define L5_CMDID 65536
 #define L5_TM_OUT 0.5;
+#define SO_RCVBUF_SIZE 327680
 
-
-#if 0
-static char *policyXML="<cross-domain-policy><allow-access-from domain=/"*/" to-ports=/"*/"/></cross-domain-policy>";
-static char *policeRequestStr="<policy-file-request/>";
-#endif
 bool firsttime = true;
-char md5[33];
 unsigned char filehead[512];
-char filename[BUFFER_SIZE];
-long filesize;
-unsigned char *file;
+char filename[FILE_NAME_SIZE];
+unsigned char file[SO_RCVBUF_SIZE];
+static int listenfd;
+int gport;
+static struct itimerval oldtv;
+
 int CreateTcpListenSocket();
 int InitEpollFd();
 void UseConnectFd(int sockfd);
@@ -54,9 +53,54 @@ void setnonblocking(int sock);
 int sendMsg(int fd,char *msg, int len);
 int run();
 
-static int listenfd;
-int gport;
+void fun_dump( int no)
+{
+        char _signal[64][32] = {
+"1: SIGHUP", "2: SIGINT", "3: SIGQUIT", "4: SIGILL",
+"5: SIGTRAP", "6: SIGABRT", "7: SIGBUS", "8: SIGFPE",
+"9: SIGKILL", "10: SIGUSR1", "11: SIGSEGV", "12: SIGUSR2",
+"13: SIGPIPE", "14: SIGALRM", "15: SIGTERM", "16: SIGSTKFLT",
+"17: SIGCHLD", "18: SIGCONT", "19: SIGSTOP", "20: SIGTSTP",
+"21: SIGTTIN", "22: SIGTTOU", "23: SIGURG", "24: SIGXCPU",
+"25: SIGXFSZ", "26: SIGVTALRM", "27: SIGPROF", "28: SIGWINCH",
+"29: SIGIO", "30: SIGPWR", "31: SIGSYS", "34: SIGRTMIN",
+"35: SIGRTMIN+1", "36: SIGRTMIN+2", "37: SIGRTMIN+3", "38: SIGRTMIN+4",
+"39: SIGRTMIN+5", "40: SIGRTMIN+6", "41: SIGRTMIN+7", "42: SIGRTMIN+8",
+"43: SIGRTMIN+9", "44: SIGRTMIN+10", "45: SIGRTMIN+11", "46: SIGRTMIN+12",
+"47: SIGRTMIN+13", "48: SIGRTMIN+14", "49: SIGRTMIN+15", "50: SIGRTMAX-14",
+"51: SIGRTMAX-13", "52: SIGRTMAX-12", "53: SIGRTMAX-11", "54: SIGRTMAX-10",
+"55: SIGRTMAX-9", "56: SIGRTMAX-8", "57: SIGRTMAX-7", "58: SIGRTMAX-6",
+"59: SIGRTMAX-5", "60: SIGRTMAX-4", "61: SIGRTMAX-3", "62: SIGRTMAX-2",
+"63: SIGRTMAX-1", "64: SIGRTMAX" };
 
+        void *stack_p[10];
+        char **stack_info;
+        int size;
+
+        size = backtrace( stack_p, sizeof(stack_p));
+        stack_info = backtrace_symbols( stack_p, size);
+
+        if( no >= 1 && no <= 64)   
+                printf("[%s] %d stack frames.\n", _signal[no-1], size);
+        else
+                printf("[No infomation %d] %d stack frames.\n", no, size);
+
+        int i = 0;
+        for( ; i < size; i++)
+                printf("%s\n", stack_info[i]);
+
+        free( stack_info);
+
+        //free anything
+        fflush(NULL);
+        exit(0);
+}
+
+void myexit()
+{
+    printf("pid is existing : gport<%d>\n", gport);
+}
+    
 void move_to_newdir()
 {
     int status = 0;
@@ -76,43 +120,10 @@ void move_to_newdir()
         return;
     }
 }
-
-
-void timerfunc(int param)
-{
-    static int count = 0;
-
-    printf("count is %d\n", count++);
-}
-#if 0
-void init_sigaction()
-{
-    struct sigaction act;
-          
-    act.sa_handler = timerfunc; //设置处理信号的函数
-    act.sa_flags  = 0;
-
-    sigemptyset(&act.sa_mask);
-    sigaction(SIGPROF, &act, NULL);//时间到发送SIGROF信号
-}
-
-void init_time()
-{
-    struct itimerval val;
-         
-    val.it_value.tv_sec = HEART_INTERVAL; //1秒后启用定时器
-    val.it_value.tv_usec = 0;
-
-    val.it_interval = val.it_value; //定时器间隔为1s
-
-    setitimer(ITIMER_PROF, &val, NULL);
-}
-#endif
-static struct itimerval oldtv;
 void set_timer()  
 {  
     struct itimerval itv;  
-    itv.it_interval.tv_sec = HEART_INTERVAL;  //设置为1秒
+    itv.it_interval.tv_sec = HEART_INTERVAL;  //设置为60秒
     itv.it_interval.tv_usec = 0;  
     itv.it_value.tv_sec = 1;  
     itv.it_value.tv_usec = 0;  
@@ -176,66 +187,16 @@ void signal_handler(int param)
     ret = ApiRouteResultUpdate(qos_req, 0, tm_out,err_msg); 
     close(client_socketfd);
 }  
-#if 0
-bool getAvaliablePort(unsigned short &port)
-{
-    bool result = true;
 
-    // 1. 创建一个socket
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-
-    // 2. 创建一个sockaddr，并将它的端口号设为0
-    struct sockaddr_in addr;
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(ADDR_ANY);
-    addr.sin_port = 0;        // 若port指定为0,则调用bind时，系统会为其指定一个可用的端口号
-
-    // 3. 绑定
-    int ret = bind(sock, (SOCKADDR*)&addr, sizeof addr);
-
-    if (0 != ret)
-    {
-        result = false;
-        goto END;
-    }
-
-    // 4. 利用getsockname获取
-    struct sockaddr_in connAddr;
-    int len = sizeof connAddr;
-    ret = getsockname(sock, (SOCKADDR*)&connAddr, &len);
-    if (0 != ret)
-    {
-        result = false;
-        goto END;
-    }
-
-    port = ntohs(connAddr.sin_port); // 获取端口号
-
-END:
-    if ( 0 != closesocket(sock) )
-        result = false;
-    return result;
-}
-#endif
 int main()
 {
     signal(SIGPIPE, SIG_IGN);
     /**/pid_t pid;
-
+    atexit(myexit);
+    signal( SIGSEGV, fun_dump);
     signal(SIGALRM, signal_handler);  //注册当接收到SIGALRM时会发生是么函数；
     set_timer();  //启动定时器
-
-    #if 0
-    if((pid = fork()) < 0){
-        printf("End at: %d",__LINE__);
-        exit(-1);
-    }
- 
-    if (pid){
-        printf("End at: %d",__LINE__);
-        //exit(0);
-    }
-    #endif
+    
     run();
 }
 
@@ -260,7 +221,6 @@ int run()
         exit(1);
     }
 
-    printf("begin in loop.\n");
     while (1)
     {
         nfds = epoll_wait(epoll_fd, events, BUF_EV_LEN, 1000);
@@ -336,7 +296,7 @@ int CreateTcpListenSocket()
     //设置SO_REUSEADDR选项(服务器快速重起)
     optval = 0x1;
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void *)&optval, sizeof(optval));
-    int nRecvBuf=320*1024;//设置为320K
+    int nRecvBuf = SO_RCVBUF_SIZE;//设置为320K
     setsockopt(sockfd ,SOL_SOCKET, SO_RCVBUF,(const char*)&nRecvBuf,sizeof(int));
     /*
     //设置SO_LINGER选项(防范CLOSE_WAIT挂住所有套接字)
@@ -376,6 +336,7 @@ int CreateTcpListenSocket()
 
 int InitEpollFd()
 {
+    #if 0
     struct rlimit rt;
     rt.rlim_max = rt.rlim_cur = MAX_EPOLL_FD;
 
@@ -389,7 +350,7 @@ int InitEpollFd()
     {
         printf("设置系统资源参数成功！\n");
     }
-    
+    #endif
     //epoll descriptor
     int s_epfd;
     struct epoll_event ev;
@@ -465,6 +426,7 @@ void bash_stringproc(int sockfd, unsigned char *recvBuff)
     
     bash_len = (int)(recvBuff[3] & 0xFF);
     memcpy(buf, recvBuff + 4, bash_len);
+    buf[bash_len] = '\0';
     printf("bash_stringproc: execute bash:<%s>\n", buf);
 
     execute_bash(buf, resultbuf);
@@ -487,7 +449,7 @@ void bash_stringproc(int sockfd, unsigned char *recvBuff)
     delete []replybuf;
     return;
 }
-
+#if 0
 void UseConnectFd(int sockfd)
 {
     unsigned char recvBuff[512];
@@ -499,6 +461,7 @@ void UseConnectFd(int sockfd)
     int filenamelen, i, type;
     bool continuerecv = false;
     char replybuf[60] = {0}; 
+    char *errorbuf = NULL;
     char chmodbuf[60] = {0};
     char *resultbuf = NULL;
     char *result = NULL;
@@ -537,7 +500,7 @@ void UseConnectFd(int sockfd)
             }
          
            
-            printf("firstime recvnum:<%d>\n", recvNum);
+            //printf("firstime recvnum:<%d>\n", recvNum);
             
             recvtotal = 0;
 
@@ -552,43 +515,58 @@ void UseConnectFd(int sockfd)
             
             /*下发文件的一种，这几种他们的头部都是一样的*/
             filenamelen = (int)(recvBuff[3] & 0xFF);
-            printf("head type<%x>, namelen<%d>\n", type, filenamelen);
-            for(i = 0; i<15; i++)printf("<%x>", recvBuff[i]);
+            //printf("head type<%x>, namelen<%d>\n", type, filenamelen);
+            //for(i = 0; i<15; i++)printf("<%x>", recvBuff[i]);
             
             memset(filename, 0, BUFFER_SIZE);
             memcpy(filename, recvBuff + 4, filenamelen);
-            sprintf(rmstr, "%s %s", "rm", filename);
+            filename[filenamelen] = '\0';
+            sprintf(rmstr, "%s %s", "rm -f ", filename);
             system(rmstr);
             /*文件下发*/
             if (type == 0xA || type == 0x8 || type == 0x9)
             {
                 /*头部*/
-                printf("file head, filename<%s>", filename);
+                //printf("file head, filename<%s>", filename);
                 filesize = (long)(recvBuff[4 + filenamelen] << 24) + (long)(recvBuff[5 + filenamelen] << 16) + (long)(recvBuff[6 + filenamelen] << 8) + (long)(recvBuff[7+filenamelen] & 0xFF);
                 memset(md5, 0, sizeof(md5));
                 memcpy(md5, recvBuff + 8 + filenamelen, 32);
-                printf("filesize<%ld>, md5<%s>\n", filesize, md5);
-                file = new unsigned char [filesize + BUFFER_SIZE];
+                //printf("filesize<%ld>, md5<%s>\n", filesize, md5);
+                newbufsize = (filesize + BUFFER_SIZE) > SO_RCVBUF_SIZE ? SO_RCVBUF_SIZE : (filesize + BUFFER_SIZE);
+                //printf("newbufsize:<%d>\n", newbufsize);
+                file = new unsigned char [newbufsize];
                 firsttime = false;
-                
             }
             else
             {
-                printf("UseConnectFd type error<%d>\n", type);
-                return;
+                errorbuf = new char[60];
+                printf("UseConnectFd type error<%d>, gport<%d>\n", type, gport);
+                printf("filenamelen<%d>, <filename<%s>>\n", filenamelen, filename);
+                //for(i = 0; i<30; i++)printf("<%x>", recvBuff[i]);
+                errorbuf[0] = 0xFF;
+                errorbuf[1] = 0xEE;
+                errorbuf[2] = 0x15;
+                errorbuf[3] = (int)(filenamelen & 0xFF);
+               
+                memcpy(replybuf + 4, filename, filenamelen);
+                errorbuf[4 + filenamelen] = 0x2;           
+                sendMsg(sockfd, errorbuf, 60);
+                printf("send success\n");
+                delete []errorbuf;
+                firsttime = true;
             }
             return;
         }
         else
         {
-            printf("body recv, file<%x>\n", file);
+            //printf("body recv, file<%x>\n", file);
             //memset(file,'0',filesize + 512);
-            memset(file, 0, filesize + BUFFER_SIZE);
+            memset(file, 0, newbufsize);
             
-            recvNum = recv(sockfd, file, filesize + BUFFER_SIZE, MSG_DONTWAIT);
+            recvNum = recv(sockfd, file, newbufsize, MSG_DONTWAIT);
             if ( recvNum < 0) 
             {
-                printf("num < 0, errno<%d>\n", errno);
+                //printf("num < 0, errno<%d>\n", errno);
                 if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
                 {//ETIMEDOUT可能导致SIGPIPE
                 
@@ -608,30 +586,31 @@ void UseConnectFd(int sockfd)
             }
 
             recvtotal += recvNum;
-            printf("recv num<%d>, total<%d>\n", recvNum, recvtotal);
-            
+    
             if (!continuerecv)
             {
                 type = (int)(file[2] & 0x0F);
                 filenamelen = (int)(file[3] & 0xFF);
-                printf("body type<%d>, namelen<%d>", type, filenamelen);
+                //printf("body type<%d>, namelen<%d>", type, filenamelen);
+                #if 0
                 for(i = 0; i < 30; i++)
                 {
                     printf("<%x>", file[i]);
                 }
+                #endif
                 memset(filename, 0, BUFFER_SIZE);
                 memcpy(filename, file + 4, filenamelen);
                 if (type == 0xE || type == 0xD || type == 0xC)
                 {
                     /*头部*/
-                    printf("file body, filename<%s>", filename);
+                    //printf("file body, filename<%s>", filename);
                     filesize = (long)(file[4 + filenamelen] << 24) + (long)(file[5 + filenamelen] << 16) + (long)(file[6 + filenamelen] << 8) + (long)(file[7+filenamelen] & 0xFF);
-                    printf("filesize<%ld>\n", filesize);
-                    char *tmp = new char [filesize];
-                    memset(tmp, 0, filesize);
-                    memcpy(tmp, file + 8 + filenamelen, filesize);
-                    tmp[filesize] = '\0';
-                    printf("tem<%d>, <%s>\n", strlen(tmp), tmp);
+                    //printf("filesize<%ld>\n", filesize);
+                    char *tmp = new char [newbufsize];
+                    memset(tmp, 0, newbufsize);
+                    memcpy(tmp, file + 8 + filenamelen, recvNum - 8 -filenamelen);
+                    tmp[recvNum - 8 -filenamelen] = '\0';
+                    //printf("tem<%d>, <%s>\n", strlen(tmp), tmp);
                     log.open(filename, ios::app | ios::binary);
                     log << tmp;
                     log.close();
@@ -678,43 +657,254 @@ void UseConnectFd(int sockfd)
 
     sprintf(md5string, "%s %s", "md5sum", filename);
     execute_bash(md5string, md5file);
-    printf("md5:<%s>, md5file<%s>\n", md5, md5file);
+    //printf("md5:<%s>, md5file<%s>\n", md5, md5file);
     /*文件下发,比对md5*/
     if (type == 0xE)
     {
+        //printf("file publish\n");
+        replybuf[0] = 0xFF;
+        replybuf[1] = 0xEE;
+        replybuf[2] = 0x15;
+        replybuf[3] = (int)(filenamelen & 0xFF);
+        //memcpy(replybuf + 4, filename, filenamelen);
+        if (0 == memcmp(md5, md5file, 32))
+        {   
+            replybuf[4 + filenamelen] = 0x1; 
+        }
+        else
+        {  
+           resultbuf[4 + filenamelen] = 0x2;
+           printf("FILE PUBLISH  FAILED!<%d>\n", gport);       
+        }
+   
+        sendMsg(sockfd, replybuf, 60);
+        return;
+    } 
+    /*配置更新，比对md5，更新*/
+    else if (type == 0xD)
+    {
+        printf("config\n");
+        replybuf[0] = 0xFF;
+        replybuf[1] = 0xEE;
+        replybuf[2] = 0x16;
+        replybuf[3] = (int)(filenamelen & 0xFF);
+        memcpy(replybuf + 4, filename, filenamelen);
+        if (0 == memcmp(md5, md5file, 32))
+        {
+            replybuf[4 + filenamelen] = 0x1; 
+        }
+        else
+        {
+            resultbuf[4 + filenamelen] = 0x2;
+            printf("CONFIG PUBLISH UPDATE FAILED!<%d>\n", gport);   
+        }
+       
+        sendMsg(sockfd, replybuf, 60);
+        return;
+    }
+    /*比对md5，脚本执行,shouji jieguo*/
+    else if (type == 0xC)
+    {
+        printf("shell file\n");
+        resultbuf = new char [1060];
+        result = new char[1000];
+        resultbuf[0] = 0xFF;
+        resultbuf[1] = 0xEE;
+        resultbuf[2] = 0x17;
+        resultbuf[3] = (int)(filenamelen & 0xFF);
+        memcpy(resultbuf + 4, filename, filenamelen);
+        if (0 == memcmp(md5, md5file, 32))
+        {
+            resultbuf[4 + filenamelen] = 0x1; 
+        }
+        else
+        {
+            resultbuf[4 + filenamelen] = 0x2;
+            printf("SHELL EXE FAILED!<%d>\n", gport);    
+        }
+       
+        sprintf(chmodbuf, "%s%s", "chmod +x ./", filename);
+        system(chmodbuf);
+        memset(chmodbuf, 0 , sizeof(chmodbuf));
+        sprintf(chmodbuf, "%s%s", "./", filename);
+        execute_bash(chmodbuf, result);
+        result_len = strlen(result);
+        resultbuf[5 + filenamelen] = (int) ((result_len >> 8) & 0xFF);
+        resultbuf[6 + filenamelen] = result_len & 0xFF;
+        memcpy(resultbuf+7+filenamelen, result, result_len);
+        sendMsg(sockfd, resultbuf, 7 + filenamelen + result_len);
+        delete []resultbuf;
+        delete []result;
+    }
+
+    //free(buff);
+    //printf("message: %s /n", recvBuff);
+}
+#endif
+void UseConnectFd(int sockfd)
+{
+    char md5file[33] = {0};
+    char md5[33];
+    char md5string[50] = {0};
+    char rmstr[50] = {0};
+    int recvNum = 0;
+    int filenamelen, i, type;
+    bool continuerecv = false;
+    char replybuf[60] = {0}; 
+    char *errorbuf = NULL;
+    char chmodbuf[60] = {0};
+    char *resultbuf = NULL;
+    char *result = NULL;
+    long  recvtotal = 0;
+    long filesize = 0;
+    long newbufsize = 0;
+    int total = 0;
+    int result_len = 0;
+    bool headcon = false;
+    ofstream log;
+  
+    while(1)
+    {
+        
+        memset(file, 0, SO_RCVBUF_SIZE);
+        recvNum = recv(sockfd, file, SO_RCVBUF_SIZE, MSG_DONTWAIT);
+        if ( recvNum < 0) 
+        {
+            //printf("num < 0, errno<%d>\n", errno);
+            if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+            {//ETIMEDOUT可能导致SIGPIPE
+                continue;
+            }
+            else
+            {
+                printf("errno<%d>\n", errno);
+                break;
+            }
+        } 
+        else if (recvNum == 0) 
+        {
+            close(sockfd);
+            break;
+        }
+        recvtotal += recvNum;
+        
+        if (!continuerecv)
+        {
+            type = (int)(file[2] & 0x0F);
+            filenamelen = (int)(file[3] & 0xFF);
+            //printf("body type<%d>, namelen<%d>", type, filenamelen);
+            #if 0
+            for(i = 0; i < 30; i++)
+            {
+                printf("<%x>", file[i]);
+            }
+            #endif
+            if (type == 0xB)
+            {
+                bash_stringproc(sockfd, file);
+                return ;
+            }
+            
+           
+            memset(filename, 0, FILE_NAME_SIZE);
+            memcpy(filename, file + 4, filenamelen);
+            file[filenamelen] = '\0';
+            sprintf(rmstr, "%s %s", "rm -f ", filename);
+            system(rmstr);
+            if (type == 0xE || type == 0xD || type == 0xC)
+            {
+                /*头部*/
+                //printf("tem<%d>, <%s>\n", strlen(tmp), tmp);
+                memset(md5, 0, 33);
+                memcpy(md5, file + 8 + filenamelen, 32);
+                md5[32] = '\0';
+                
+                filesize = (long)(file[4 + filenamelen] << 24) + (long)(file[5 + filenamelen] << 16) + (long)(file[6 + filenamelen] << 8) + (long)(file[7+filenamelen] & 0xFF);
+                //printf("filesize<%ld>\n", filesize);              
+                newbufsize = (filesize + BUFFER_SIZE) > SO_RCVBUF_SIZE ? SO_RCVBUF_SIZE : (filesize + BUFFER_SIZE);
+                char *tmp = new char [newbufsize];
+                memset(tmp, 0, newbufsize);
+                memcpy(tmp, file + 40 + filenamelen, recvNum - 40 -filenamelen);
+                tmp[recvNum - 40 - filenamelen] = '\0';
+                
+                log.open(filename, ios::app | ios::binary);
+                log << tmp;
+                log.close();
+                delete []tmp;
+                if (recvtotal < filesize + BUFFER_SIZE)
+                {
+                    continuerecv = true;
+                    firsttime = false;
+                    continue;
+                }
+                /*一次接受完成*/
+                else
+                {
+                    break;
+                    firsttime = true;
+                }
+            }
+            else
+            {
+                errorbuf = new char[60];
+                printf("UseConnectFd type error<%d>, gport<%d>\n", type, gport);
+                printf("filenamelen<%d>, <filename<%s>>\n", filenamelen, filename);
+                //for(i = 0; i<30; i++)printf("<%x>", recvBuff[i]);
+                errorbuf[0] = 0xFF;
+                errorbuf[1] = 0xEE;
+                errorbuf[2] = 0x15;
+                errorbuf[3] = (int)(filenamelen & 0xFF);
+               
+                memcpy(replybuf + 4, filename, filenamelen);
+                errorbuf[4 + filenamelen] = 0x2;           
+                sendMsg(sockfd, errorbuf, 60);
+                printf("send success\n");
+                delete []errorbuf;
+                firsttime = true;
+                return;
+            }
+        }
+        else
+        {
+            log.open(filename, ios::app | ios::binary);
+            log << file;
+            log.close();
+            if (recvtotal < filesize + BUFFER_SIZE)
+            {
+                continuerecv = true;
+                firsttime = false;
+                continue;
+            }
+            else 
+            { 
+                continuerecv = false;
+                firsttime = true;
+            }
+        }
+        //delete []file;
+        break;
+    }
+
+    sprintf(md5string, "%s %s", "md5sum", filename);
+    execute_bash(md5string, md5file);
+    //printf("md5:<%s>, md5file<%s>\n", md5, md5file);
+    /*文件下发,比对md5*/
+    if (type == 0xE)
+    {
+        //printf("file publish\n");
         replybuf[0] = 0xFF;
         replybuf[1] = 0xEE;
         replybuf[2] = 0x15;
         replybuf[3] = (int)(filenamelen & 0xFF);
         memcpy(replybuf + 4, filename, filenamelen);
-        printf("in");
         if (0 == memcmp(md5, md5file, 32))
         {   
             replybuf[4 + filenamelen] = 0x1; 
-            printf("FILE PUBLISH SUCCESS!\n");
         }
         else
         {  
-         #if 0
-            /*可能是编码问题*/
-            sprintf(codetran, "%s %s %s %s", "iconv -f latin1 -t ASCII", filename, "-o", filename);
-            printf("codetran<%s>\n", codetran);
-            system(codetran);
-            execute_bash(md5string, md5file);
-
-            if (0 == memcmp(md5, md5file, 32))
-            {
-                resultbuf[4 + filenamelen] = 0x1; 
-                printf("FILE PUBLISH  SUCCESS!\n");
-            }
-            else
-            {
-                resultbuf[4 + filenamelen] = 0x2;
-                printf("FILE PUBLISH  FAILED!\n");            
-            }
-          #endif
            resultbuf[4 + filenamelen] = 0x2;
-           printf("FILE PUBLISH  FAILED!\n");       
+           printf("FILE PUBLISH  FAILED!<%d>\n", gport);       
         }
    
         sendMsg(sockfd, replybuf, 60);
@@ -731,33 +921,14 @@ void UseConnectFd(int sockfd)
         if (0 == memcmp(md5, md5file, 32))
         {
             replybuf[4 + filenamelen] = 0x1; 
-            printf("CONFIG PUBLISH UPDATE SUCCESS!\n");
         }
         else
         {
-           /*可能是编码问题*/
-            #if 0
-            sprintf(codetran, "%s %s %s %s", "iconv  -f latin1 -t ASCII", filename, "-o", filename);
-            system(codetran);
-            execute_bash(md5string, md5file);
-     
-            if (0 == memcmp(md5, md5file, 32))
-            {
-                resultbuf[4 + filenamelen] = 0x1; 
-                printf("CONFIG PUBLISH UPDATE SUCCESS!\n");
-            }
-            else
-            {
-                resultbuf[4 + filenamelen] = 0x2;
-                printf("CONFIG PUBLISH UPDATE FAILED!\n");            
-            }
-            #endif
             resultbuf[4 + filenamelen] = 0x2;
-            printf("CONFIG PUBLISH UPDATE FAILED!\n");   
+            printf("CONFIG PUBLISH UPDATE FAILED!<%d>\n", gport);   
         }
        
         sendMsg(sockfd, replybuf, 60);
-        printf("send success\n");
         return;
     }
     /*比对md5，脚本执行,shouji jieguo*/
@@ -773,29 +944,11 @@ void UseConnectFd(int sockfd)
         if (0 == memcmp(md5, md5file, 32))
         {
             resultbuf[4 + filenamelen] = 0x1; 
-            printf("SHELL EXE SUCCESS!\n");
         }
         else
         {
-            /*可能是编码问题*/
-            #if 0
-            sprintf(codetran, "%s %s %s %s", "iconv  -f latin1 -t ASCII", filename, "-o", filename);
-            system(codetran);
-            execute_bash(md5string, md5file);
-
-            if (0 == memcmp(md5, md5file, 32))
-            {
-                resultbuf[4 + filenamelen] = 0x1; 
-                printf("SHELL EXE SUCCESS!\n");
-            }
-            else
-            {
-                resultbuf[4 + filenamelen] = 0x2;
-                printf("SHELL EXE FAILED!\n");            
-            }
-            #endif
             resultbuf[4 + filenamelen] = 0x2;
-            printf("SHELL EXE FAILED!\n");    
+            printf("SHELL EXE FAILED!<%d>\n", gport);    
         }
        
         sprintf(chmodbuf, "%s%s", "chmod +x ./", filename);

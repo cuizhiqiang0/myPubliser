@@ -445,7 +445,7 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
                     {
                         break;
                     }
-                    if ((0 == strcmp("3", row[0])) && (0 == strcmp("3", row[1])))
+                    if ((0 == strcmp("3", row[1])))
                     {
                         sqlup << "update T_execute set taskState = 3, finalResult = 2" << " where taskId = " << taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;

@@ -76,7 +76,7 @@ void execute_bash(char *buf, char *resultbuf)
         cout << "error" << endl;
         return;
     }
-    memset(line, 0, sizeof(line));
+    memset(line, 0, BASH_RESULT_SIZE);
     while (fgets(line, sizeof(line)-1, fp) != NULL){
         i = strlen(line);
         len = ((BASH_RESULT_SIZE - count - i) > i) ? i : (BASH_RESULT_SIZE - count -i);
@@ -88,7 +88,7 @@ void execute_bash(char *buf, char *resultbuf)
         } 
         memcpy(resultbuf + count, line, i);
         count = count + i ;
-        memset(line, 0, sizeof(line));
+        memset(line, 0, BASH_RESULT_SIZE);
     }
     pclose(fp);
     delete []line;
@@ -128,7 +128,6 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
     }
     else
     {
-        printf("Connected........\n");
     }
 
     /*执行成功直接更新执行结果就可以了*/
@@ -137,7 +136,7 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
         sqltmp << "update T_execute set taskState = 2, finalResult = 1" << " where taskId = " << taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         sql = sqltmp.str();
-        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        //cout << "update_filePublish:sql:" << sql.c_str() << endl;
         ret = mysql_query(&mysql, sql.c_str());
         if (0 != ret)
         {
@@ -151,10 +150,11 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
     /*执行不成功，查看次数是不是达到三次了，是的话就把结果置位失败*/
     else
     {
+        printf("task execute failed taskId<%d>, client_ip<%s>, client_port<%d>\n", taskId, client_ip, client_port);
         sqltmp << "select taskState, retryTimes from T_execute where taskId = "<< taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         sql = sqltmp.str();
-        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        //cout << "update_filePublish:sql:" << sql.c_str() << endl;
         ret = mysql_query(&mysql, sql.c_str());
         if(ret)
         {
@@ -162,11 +162,9 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
         }
         else
         {
-            printf("Query made ....t<%d>\n", ret);
             res = mysql_use_result(&mysql);
             if(NULL != res)
             {
-                printf("res not null\n");
                 while ((row = mysql_fetch_row(res)))
                 {
                     if (NULL == row)
@@ -185,7 +183,7 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
                     }
                     mysql_free_result(res);
                     sql = sqlup.str();
-                    cout << "update_filePublish:sql:" << sql.c_str() << endl;
+                    //cout << "update_filePublish:sql:" << sql.c_str() << endl;
                     ret = mysql_query(&mysql, sql.c_str());
                     if (0 != ret)
                     {
@@ -227,7 +225,6 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
     }
     else
     {
-        printf("Connected........\n");
     }
 
     /*执行成功直接更新执行结果就可以了*/
@@ -236,7 +233,7 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
         sqltmp << "update T_execute set taskState = 2, finalResult = 1, executeResult = '" << result  << "' where taskId = " << taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         sql = sqltmp.str();
-        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        //cout << "update_filePublish:sql:" << sql.c_str() << endl;
         ret = mysql_query(&mysql, sql.c_str());
         if (0 != ret)
         {
@@ -252,7 +249,7 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
         sqltmp << "select taskState, retryTimes from T_execute where taskId = "<< taskId << \
                                                 " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
         sql = sqltmp.str();
-        cout << "update_filePublish:sql:" << sql.c_str() << endl;
+        //cout << "update_filePublish:sql:" << sql.c_str() << endl;
         ret = mysql_query(&mysql, sql.c_str());
         if(ret)
         {
@@ -260,11 +257,9 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
         }
         else
         {
-            printf("Query made ....t<%d>\n", ret);
             res = mysql_use_result(&mysql);
             if(NULL != res)
             {
-                printf("res not null\n");
                 while ((row = mysql_fetch_row(res)))
                 {
                     if (NULL == row)
@@ -283,7 +278,7 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
                     }
                     mysql_free_result(res);
                     sql = sqlup.str();
-                    cout << "update_filePublish:sql:" << sql.c_str() << endl;
+                    //cout << "update_filePublish:sql:" << sql.c_str() << endl;
                     ret = mysql_query(&mysql, sql.c_str());
                     if (0 != ret)
                     {
@@ -349,13 +344,16 @@ int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob,
     myMsg       * msg = (myMsg *)proc_param;
     unsigned char recvReply[1100] = {0};
     int i, type, len;
-    cout << "sessionProcfunc: data<" << blob->data << ">,  param:client_ip<" << msg->ip << "> client_port<" << msg->port << "> taskID<" << msg->taskId << ">" << endl;
+    //cout << "sessionProcfunc: data<" << blob->data << ">,  param:client_ip<" << msg->ip << "> client_port<" << msg->port << "> taskID<" << msg->taskId << ">" << endl;
     memcpy(recvReply, blob->data, blob->len);
+    recvReply[blob->len] = 0;
+    #if 0
     for (i = 0; i < 15; i++)
     {
         printf("<%x>", recvReply[i]);
     }
     printf("\n");
+    #endif
     type = (int)recvReply[2] & 0xF;
     len = (int)recvReply[3] & 0xFF;
     if (type == 0x5 || type == 0x6)
@@ -420,15 +418,14 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
     /*fix-me,根据读取数据库的结果，这里来调用不同的API*/
     char *filestring = NULL;
     char *buffer = NULL;
-    char *buf = NULL;
-    long fliesize;
-    int  i, len, port, sid;
+    long filesize;
+    int   len, port, sid, ret;
     char md5buf[70];
     char md5result[33];
-    printf("file_publishProc: client_ip<%s>, client_port<%s>, taskType<%d>, filename<%s>\n", client_ip, client_port, taskType, filename);
+    //printf("file_publishProc: client_ip<%s>, client_port<%s>, taskType<%d>, filename<%s>\n", client_ip, client_port, taskType, filename);
 
     sscanf(client_port, "%d", &port);
-    printf("file_publish，port<%d>\n", port);
+    //printf("file_publish，port<%d>\n", port);
     
 
     sid = SPP_ASYNC::CreateSession(-1, "custom", "tcp_multi_con", client_ip, port, -1,
@@ -439,24 +436,33 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
         return CREATE_SESSION_FAILED;
     }
 
-    buf = new char [512];
     filestring = new char [FILE_DIR_SIZE];
     sprintf(filestring, "%s%s", FILE_DIR, filename);
     ifstream file(filestring, ios::in|ios::binary|ios::ate);
-    fliesize = file.tellg();
+    filesize = file.tellg();
+    if (filesize == -1)
+    {
+        file.close();
+        delete []filestring;
+        printf("file<%s> doesnot exist\n", filename);
+        return FILE_DOESNOT_EXIST;
+    }
     file.seekg(0, ios::beg);
-    cout << "filesize:" << fliesize << endl;
+    //cout << "filesize:" << filesize << endl;
 
     len = strlen(filename);
-    printf("file_publish：len<%x>", len);
+    //printf("file_publish：len<%x>", len);
 
     myMsg *msg = new myMsg;
     strncpy(msg->ip, client_ip, strlen(client_ip));
     msg->port = port;
     sscanf(taskId, "%d", &(msg->taskId));
     
-    SPP_ASYNC::RegSessionCallBack(sid, sessionProcfunc, (void *)msg, sessionInputfunc, NULL);
+    sprintf(md5buf, "%s %s", "md5sum", filestring);
+    execute_bash(md5buf, md5result);
     
+    SPP_ASYNC::RegSessionCallBack(sid, sessionProcfunc, (void *)msg, sessionInputfunc, NULL);
+    #if 0
     /*ver:1, filetrans:A, fileend: E*/
     buf[0] = 0xFF;
     buf[1] = 0xEE;
@@ -488,15 +494,16 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
     }
     buf[3] = len & 0xFF;//文件名长度
     memcpy(buf + 4, filename, len);
-    buf[4 + len] = (fliesize >> 24) & 0xFF;//内容长度
-    buf[5 + len] = (fliesize >> 16) & 0xFF;
-    buf[6 + len] = (fliesize >> 8) & 0xFF;
-    buf[7 + len] = fliesize & 0xFF; 
+    buf[4 + len] = (filesize >> 24) & 0xFF;//内容长度
+    buf[5 + len] = (filesize >> 16) & 0xFF;
+    buf[6 + len] = (filesize >> 8) & 0xFF;
+    buf[7 + len] = filesize & 0xFF; 
     /*md5*/
     sprintf(md5buf, "%s %s", "md5sum", filestring);
     execute_bash(md5buf, md5result);
     memcpy(buf + 8 + len, md5result, 32);
     for (i = 0; i < 50; i++)printf("<%x>", buf[i]);
+ 
     if (0 != SPP_ASYNC::SendData(sid, buf, 512, NULL, (void *)msg))
     {
         printf("send file header failed.");
@@ -505,11 +512,10 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
         SPP_ASYNC::DestroySession(sid);
         return SEND_TO_CLIENT_FAILED;
     }
-    
+    #endif
     delete []filestring;
-    delete []buf;
     
-    buffer = new char [fliesize + 512];
+    buffer = new char [filesize + 512];
     buffer[0] = 0xFF;
     buffer[1] = 0xEE;
     switch (taskType)
@@ -533,27 +539,33 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
         {
             printf("file_publishProc,content type error\n");
             SPP_ASYNC::DestroySession(sid);
+            file.close();
+            delete []buffer;
+            delete msg;
             return WRONG_TYPE;
         }
     }
     buffer[3] = len & 0xFF;//文件名长度
     memcpy(buffer + 4, filename, len);
-    buffer[4 + len] = (fliesize >> 24) & 0xFF;//内容长度
-    buffer[5 + len] = (fliesize >> 16) & 0xFF;
-    buffer[6 + len] = (fliesize >> 8) & 0xFF;
-    buffer[7 + len] = fliesize & 0xFF;
-    file.read(buffer + 8 + len, fliesize);
+    buffer[4 + len] = (filesize >> 24) & 0xFF;//内容长度
+    buffer[5 + len] = (filesize >> 16) & 0xFF;
+    buffer[6 + len] = (filesize >> 8) & 0xFF;
+    buffer[7 + len] = filesize & 0xFF;
+    memcpy(buffer + 8 + len, md5result, 32);
+    file.read(buffer + 40 + len, filesize);
     file.close();
-
+    #if 0
     for (i = 0; i < 15; i++)
     {
         printf("<%x>", buffer[i]);
     }
-
-    if (0 != SPP_ASYNC::SendData(sid, buffer, fliesize + 512, NULL, (void *)msg))
+    #endif
+    ret = SPP_ASYNC::SendData(sid, buffer, filesize + 512, NULL, (void *)msg);
+    if (0 != ret)
     {     
-        printf("send file failed.");
+        printf("send file failed.,ret <%d>\n", ret);
         delete[] buffer;
+        delete msg;
         SPP_ASYNC::DestroySession(sid);
         return SEND_TO_CLIENT_FAILED;
     }
@@ -564,12 +576,12 @@ int file_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
 
 int bash_publishProc(char *taskId, char *client_ip, char *client_port, int taskType, char *bashString)
 {
-    int  i, len, port, sid;
+    int   len, port, sid;
     char *buf = NULL;
     
-    printf("bash_publishProc: client_ip<%s>, client_port<%s>, taskType<%d>, bashString<%s>\n", client_ip, client_port, taskType, bashString);
+    //printf("bash_publishProc: client_ip<%s>, client_port<%s>, taskType<%d>, bashString<%s>\n", client_ip, client_port, taskType, bashString);
     sscanf(client_port, "%d", &port);
-    printf("bash_publishProc:<%d>\n", port);
+    //printf("bash_publishProc:<%d>\n", port);
 
     sid = SPP_ASYNC::CreateSession(-1, "custom", "tcp_multi_con", client_ip, port, -1,
           500000,  DEFAULT_MULTI_CON_INF,  DEFAULT_MULTI_CON_SUP);
@@ -581,7 +593,7 @@ int bash_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
     /*ver:1, filetrans:A, fileend: E*/
 
     len = strlen(bashString);
-    printf("bash_publishProc：bashlen<%x>", len);
+    //printf("bash_publishProc：bashlen<%x>", len);
 
     myMsg *msg = new myMsg;
     strncpy(msg->ip, client_ip, strlen(client_ip));
@@ -603,11 +615,12 @@ int bash_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
         delete []buf;
         return SEND_TO_CLIENT_FAILED;
     }
-
+    #if 0
     for (i = 0; i < 15; i++)
     {
         printf("<%x>", buf[i]);
     }
+    #endif
     delete []buf;
 
     return PUBLISH_SUCCESS;
@@ -659,7 +672,6 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
     }
     else
     {
-        printf("Connected........");
     }
 
     /*下发成功*/
@@ -684,7 +696,7 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
         }
     }
     sql = sqltmp.str();
-    cout << "updateT_execute:sql:" << sql.c_str() << endl;
+    //cout << "updateT_execute:sql:" << sql.c_str() << endl;
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
@@ -723,7 +735,6 @@ void insertT_execute(char *taskId, char *client_ip, char *client_port, bool publ
     }
     
     sql = sqltmp.str();
-    cout << "insertT_execute:sql:" << sql.c_str() << endl;
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
@@ -749,15 +760,14 @@ void updateT_addtask(char *taskId)
     sqltmp << "update T_addtask set clientCount =  clientCount + 1 where taskId = "  << taskId << ";" << endl;
 
     sql = sqltmp.str();
-    cout << "updateT_addtask:sql:" << sql.c_str() << endl;
+    //cout << "updateT_addtask:sql:" << sql.c_str() << endl;
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
-    printf("updateT_addtask:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+        printf("updateT_addtask:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
     }
     else
     { 
-     printf("updateT_addtask:update success\n");
     }
 
     mysql_close(&mysql);
@@ -781,7 +791,7 @@ void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char
 
     sqlselect << "select * from T_execute where taskId = " << taskId << " and ip = '" << client_ip << "' and port = " << client_port << ";" << endl;
     sql = sqlselect.str();
-    cout << "task_publish_to_client_insert_T_execute:sql:" << sql.c_str() << endl; 
+    //cout << "task_publish_to_client_insert_T_execute:sql:" << sql.c_str() << endl; 
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
@@ -827,6 +837,7 @@ void task_publish_to_client_insert_T_execute(char *taskId, char *client_ip, char
                 }
                 else
                 {
+                    printf("taskpublish failed taskid<%s>, client_ip<%s>, client_port<%s>\n", taskId, client_ip, client_port);
                     insertT_execute(taskId, client_ip, client_port, false);
                 }
                 updateT_addtask(taskId);
@@ -859,7 +870,6 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
      }
      else
      {
-        printf("Connected........\n");
      }
 
     if (NULL == client_ip)
@@ -872,7 +882,7 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
     }
     
     sql = sqltmp.str();
-    cout << "task_publish_to_client:sql:" << sql.c_str() << endl; 
+    //cout << "task_publish_to_client:sql:" << sql.c_str() << endl; 
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
@@ -886,7 +896,7 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
                 while ((row = mysql_fetch_row(res)))
                 {
                     /*对这个client下发任务，同时把这条记录增加到T_execute的数据表里*/
-                    printf("task_publish_to_client:clientip<%s>, clientPort<%s>\n", row[1], row[2]);
+                    //printf("task_publish_to_client:clientip<%s>, clientPort<%s>\n", row[1], row[2]);
                     task_publish_to_client_insert_T_execute(taskId, row[1], row[2], taskType, taskString);
                 }
                 mysql_free_result(res);
@@ -1263,7 +1273,7 @@ extern "C" int spp_handle_input(unsigned flow, void* arg1, void* arg2)
 extern "C" int spp_handle_route(unsigned flow, void* arg1, void* arg2)
 {
     //数据块对象，结构请参考tcommu.h
-    blob_type* blob = (blob_type*)arg1;
+    //blob_type* blob = (blob_type*)arg1;
     //extinfo有扩展信息
     //TConnExtInfo* extinfo = (TConnExtInfo*)blob->extdata;
     //服务器容器对象
