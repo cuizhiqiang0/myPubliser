@@ -23,7 +23,7 @@ USING_ASYNCFRAME_NS;
 #define FILE_DIR     "/data/home/waltercui/file/"
 
 /*报文一次发送的长度*/
-#define SIZE             4096
+#define SIZE             512
 /*ip地址的大小*/
 #define IP_SIZE          20 
 #define FILE_DIR_SIZE    80
@@ -60,6 +60,7 @@ enum TASK_PUBLISH_ANS
     PUBLISH_SUCCESS = 0,
     WRONG_TYPE,
     SEND_TO_CLIENT_FAILED,
+    MD5_CALC_ERROR,
     CREATE_SESSION_FAILED,
     FILE_DOESNOT_EXIST,
     NO_MEMORY,

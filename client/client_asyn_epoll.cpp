@@ -14,9 +14,12 @@
 #include <sys/time.h> // 包含setitimer()函数
 #include <sys/resource.h>
 #include <signal.h>  //包含signal()函数
+#include <pthread.h>
 #include "execinfo.h"
 #include <fstream> 
 #include <iostream>
+
+
 #include "qos_client.h"
 
 using namespace std;
@@ -150,7 +153,7 @@ void signal_handler(int param)
     {
         printf("Create socket fd failed！\n"); 
     }
-    
+
     loop:
     int iRet = ApiGetRoute(qos_req, tm_out, err_msg);
     if(iRet < 0)
@@ -187,17 +190,26 @@ void signal_handler(int param)
     ret = ApiRouteResultUpdate(qos_req, 0, tm_out,err_msg); 
     close(client_socketfd);
 }  
-
+void *hello(void *ptr)
+{
+    signal(SIGALRM, signal_handler);  //注册当接收到SIGALRM时会发生是么函数；
+    set_timer();  //启动定时器
+    while(1);
+}
 int main()
 {
     signal(SIGPIPE, SIG_IGN);
     /**/pid_t pid;
+    pthread_t t0;
     atexit(myexit);
     signal( SIGSEGV, fun_dump);
-    signal(SIGALRM, signal_handler);  //注册当接收到SIGALRM时会发生是么函数；
-    set_timer();  //启动定时器
     
+    if(pthread_create(&t0, NULL, hello, NULL) == -1){
+            puts("fail to create pthread t0");
+            exit(1);
+        }
     run();
+    
 }
 
 int run()
@@ -761,6 +773,7 @@ void UseConnectFd(int sockfd)
     int total = 0;
     int result_len = 0;
     bool headcon = false;
+    char tmp[SO_RCVBUF_SIZE] = {0};
     ofstream log;
   
     while(1)
@@ -778,13 +791,13 @@ void UseConnectFd(int sockfd)
             else
             {
                 printf("errno<%d>\n", errno);
-                break;
+                return;
             }
         } 
         else if (recvNum == 0) 
         {
             close(sockfd);
-            break;
+            return;
         }
         recvtotal += recvNum;
         
@@ -821,17 +834,20 @@ void UseConnectFd(int sockfd)
                 
                 filesize = (long)(file[4 + filenamelen] << 24) + (long)(file[5 + filenamelen] << 16) + (long)(file[6 + filenamelen] << 8) + (long)(file[7+filenamelen] & 0xFF);
                 //printf("filesize<%ld>\n", filesize);              
-                newbufsize = (filesize + BUFFER_SIZE) > SO_RCVBUF_SIZE ? SO_RCVBUF_SIZE : (filesize + BUFFER_SIZE);
+                //newbufsize = (filesize + BUFFER_SIZE) > SO_RCVBUF_SIZE ? SO_RCVBUF_SIZE : (filesize + BUFFER_SIZE);
+                #if 0
                 char *tmp = new char [newbufsize];
                 memset(tmp, 0, newbufsize);
                 memcpy(tmp, file + 40 + filenamelen, recvNum - 40 -filenamelen);
                 tmp[recvNum - 40 - filenamelen] = '\0';
-                
+                #endif
+                memcpy(tmp, file + 40 + filenamelen, recvNum - 40 -filenamelen);
+                tmp[recvNum - 40 - filenamelen] = '\0';
                 log.open(filename, ios::app | ios::binary);
                 log << tmp;
                 log.close();
-                delete []tmp;
-                if (recvtotal < filesize + BUFFER_SIZE)
+                //delete []tmp;
+                if (recvtotal < filesize + 40 + filenamelen)
                 {
                     continuerecv = true;
                     firsttime = false;
@@ -847,6 +863,10 @@ void UseConnectFd(int sockfd)
             else
             {
                 errorbuf = new char[60];
+                for(i = 0; i < 30; i++)
+                {
+                    printf("<%x>", file[i]);
+                }
                 printf("UseConnectFd type error<%d>, gport<%d>\n", type, gport);
                 printf("filenamelen<%d>, <filename<%s>>\n", filenamelen, filename);
                 //for(i = 0; i<30; i++)printf("<%x>", recvBuff[i]);
@@ -866,10 +886,12 @@ void UseConnectFd(int sockfd)
         }
         else
         {
+            memcpy(tmp, file, recvNum);
+            tmp[recvNum] = '\0';
             log.open(filename, ios::app | ios::binary);
-            log << file;
+            log << tmp;
             log.close();
-            if (recvtotal < filesize + BUFFER_SIZE)
+            if (recvtotal < filesize + 40 + filenamelen)
             {
                 continuerecv = true;
                 firsttime = false;
@@ -900,11 +922,12 @@ void UseConnectFd(int sockfd)
         if (0 == memcmp(md5, md5file, 32))
         {   
             replybuf[4 + filenamelen] = 0x1; 
+            printf("FILE PUBLISH  SUCCESS!<%d>\n", gport);
         }
         else
         {  
-           resultbuf[4 + filenamelen] = 0x2;
-           printf("FILE PUBLISH  FAILED!<%d>\n", gport);       
+           replybuf[4 + filenamelen] = 0x2;
+           printf("FILE PUBLISH  FAILED!<%d>, recvtotal<%d>, filesize<%d>\n", gport, recvtotal, filesize);       
         }
    
         sendMsg(sockfd, replybuf, 60);
@@ -921,10 +944,11 @@ void UseConnectFd(int sockfd)
         if (0 == memcmp(md5, md5file, 32))
         {
             replybuf[4 + filenamelen] = 0x1; 
+            printf("CONFIG PUBLISH UPDATE SUCCESS!<%d>\n", gport);
         }
         else
         {
-            resultbuf[4 + filenamelen] = 0x2;
+            replybuf[4 + filenamelen] = 0x2;
             printf("CONFIG PUBLISH UPDATE FAILED!<%d>\n", gport);   
         }
        
@@ -944,6 +968,7 @@ void UseConnectFd(int sockfd)
         if (0 == memcmp(md5, md5file, 32))
         {
             resultbuf[4 + filenamelen] = 0x1; 
+            printf("SHELL EXE SUCCESS!<%d>\n", gport);
         }
         else
         {
