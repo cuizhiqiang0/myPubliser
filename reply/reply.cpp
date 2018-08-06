@@ -283,7 +283,7 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
         ret = mysql_query(&mysql, sql.c_str());
         if (0 != ret)
         {
-            printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+            printf("update_bashFile:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
         }
         else
         { 
@@ -329,7 +329,7 @@ void update_bashFile(int taskId, char *client_ip, int client_port, bool execute_
                     ret = mysql_query(&mysql, sql.c_str());
                     if (0 != ret)
                     {
-                        printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+                        printf("update_bashFile:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
                     }
                     else
                     { 
@@ -357,16 +357,14 @@ void update_bashStr(int taskId, char *client_ip, int client_port, unsigned char 
     int ret;
     
     mysql_init(&mysql);
-    if(!mysql_real_connect(&mysql, DB_HOST_IP, DB_USER,
-                  DB_PASSWORD, DB_NAME,0,NULL,0))
+    if(!mysql_real_connect(&mysql,"10.242.170.126","root",
+                     "123456","taskPublish",0,NULL,0))
     {
-        printf("Error connecting to DB_HOST_IP:%s\n",mysql_error(&mysql));
-        if(!mysql_real_connect(&mysql, SECOND_DB_HOST_IP, DB_USER,
-                      DB_PASSWORD, DB_NAME,0,NULL,0))
-        {
-            printf("Error connecting to SECOND_DB_HOST_IP:%s\n",mysql_error(&mysql));
-            return;
-        }
+        printf("Error connecting to database:%s\n",mysql_error(&mysql));
+    }
+    else
+    {
+      
     }
     printf("task execute success taskId<%d>, client_ip<%s>, client_port<%d>\n", taskId, client_ip, client_port);
     /*执行成功直接更新执行结果就可以了*/
@@ -377,7 +375,7 @@ void update_bashStr(int taskId, char *client_ip, int client_port, unsigned char 
     ret = mysql_query(&mysql, sql.c_str());
     if (0 != ret)
     {
-        printf("update_filePublish:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
+        printf("update_bashStr:update failed, ret<%d>,<%s>\n", ret, mysql_error(&mysql));
     }
     else
     { 
@@ -421,6 +419,7 @@ int sessionProcfunc(int event, int sessionId, void* proc_param, void* data_blob,
     else
     {
         cout << "recv reply type error" << endl;
+        return 0;
     }
     SPP_ASYNC::RecycleCon(sessionId, -1);
     SPP_ASYNC::DestroySession(sessionId);
@@ -466,6 +465,7 @@ int get_local_ip(const char *eth_inf, char *ip)
     close(sd);  
     return 0;  
 }
+#if 0
 int file_publishProc
 (char *taskId, char *client_ip, char *client_port, int taskType, char *filename,char *md5buf, char *filebuffer, long filesize)
 {
@@ -609,7 +609,7 @@ int bash_publishProc(char *taskId, char *client_ip, char *client_port, int taskT
 
     return PUBLISH_SUCCESS;
 }
-
+#endif
 #if 0
 int publish
 (char *taskId, char *client_ip, char *client_port, char *sendbuffer, long buffersize)
@@ -643,7 +643,7 @@ int publish
     return ret;
 }
 #endif
-int publish(char *taskId, char *client_ip, char *client_port, char *sendbuffer, long buffersize)
+int publish(char *taskId, char *client_ip, char *client_port, PACK_BLOB *blob)
 {
     int port, sid, ret;
 
@@ -660,10 +660,11 @@ int publish(char *taskId, char *client_ip, char *client_port, char *sendbuffer, 
     strncpy(msg->ip, client_ip, strlen(client_ip));
     msg->port = port;
     sscanf(taskId, "%d", &(msg->taskId));
+    //blob->_cb_info = (void*)msg;
     
     SPP_ASYNC::RegSessionCallBack(sid, sessionProcfunc, (void *)msg, sessionInputfunc, NULL);
     
-    ret = SPP_ASYNC::SendData(sid, sendbuffer, buffersize, NULL, (void *)msg);
+    ret = SPP_ASYNC::SendData(sid, blob, NULL);
     if (0 != ret)
     {     
         printf("send file failed.,ret <%d>\n", ret);
@@ -693,6 +694,7 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
         }
     }
    
+
     if (NULL == taskId)
     {
         sqltmp << "update T_execute set taskState = 3" << " where ip = '" << client_ip \
@@ -732,10 +734,9 @@ void updateT_execute(char *taskId, char *client_ip, char *client_port, int newre
     }
     else
     { 
-         printf("updateT_execute:update T-execute certainip success\n");
     }
 
-    mysql_close(&mysql);
+      mysql_close(&mysql);
 }
 
 void insertT_execute(char *taskId, char *client_ip, char *client_port, bool publish_state)
@@ -849,7 +850,7 @@ void client_dead_proc( char *client_ip, char* client_port)
 
 }
 void task_publish_to_client_insert_T_execute
-(char *taskId, char *client_ip, char* client_port, char *sendbuffer, long buffersize)
+(char *taskId, char *client_ip, char* client_port, PACK_BLOB *blob)
 {
     MYSQL mysql;
     MYSQL_RES *res;
@@ -862,7 +863,6 @@ void task_publish_to_client_insert_T_execute
     assert(NULL != taskId);
     assert(NULL != client_ip);
     assert(NULL != client_port);
-    assert(NULL != sendbuffer);
     mysql_init(&mysql);
     if(!mysql_real_connect(&mysql, DB_HOST_IP, DB_USER,
                   DB_PASSWORD, DB_NAME,0,NULL,0))
@@ -891,15 +891,16 @@ void task_publish_to_client_insert_T_execute
         if(NULL != res)
         {
             /*如果这个地方已经存在这个的记录，那么去查看这个记录的状态，如果是waiting或者success就不用管，如果是失败的话次数小于三就再下发一次，并把state改成waiting*/
-            while ((row = mysql_fetch_row(res)))
+            while (row = mysql_fetch_row(res))
             {
+                if (row == NULL)break;
                 exist = true;
             }
             /*不存在这个记录，那么我们就添加*/
             if (false == exist)
             {
                 /*下发任务，并且增天记录*/
-                ret = publish(taskId, client_ip, client_port, sendbuffer, buffersize);
+                ret = publish(taskId, client_ip, client_port, blob);
                 if (PUBLISH_SUCCESS == ret)
                 {
                     insertT_execute(taskId, client_ip, client_port, true);
@@ -932,6 +933,7 @@ int getFileMd5(char *filestring, char *md5buf)
 {    
     char md5exbuf[FILE_DIR_SIZE + 10];
     sprintf(md5exbuf, "%s %s", "md5sum", filestring);
+    //cout << md5exbuf << endl;
     return execute_bash(md5exbuf, md5buf);
 }
 long bashStrPack(char *bashString, char *buf)
@@ -1140,6 +1142,14 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
                 assert(NULL != sendbuf);
             }
             
+     
+            long *usednum = new long;
+            if (usednum == NULL)
+            {
+                cout << "new used num error" << endl;
+            }
+            *usednum = 0;
+            PACK_BLOB blob(sendbuf, len, NULL, usednum);
             while (row = mysql_fetch_row(res))
             {
                 /*对这个client下发任务，同时把这条记录增加到T_execute的数据表里*/
@@ -1152,7 +1162,8 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
                 //printf("memused:<%f>\n", memused);
                 if (memused < 80.0)
                 {
-                    task_publish_to_client_insert_T_execute(taskId, row[1], row[2], sendbuf, len);
+                    *usednum += 1;
+                    task_publish_to_client_insert_T_execute(taskId, row[1], row[2], &blob);
                 }
                 else
                 {
@@ -1160,7 +1171,7 @@ void task_publish_to_client( char *taskId, char *taskType, char *taskString, cha
                 }
             }
             
-            delete []sendbuf;           
+            //delete []sendbuf;           
                 
             mysql_free_result(res);
         }
@@ -1277,6 +1288,7 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
     int ret, retryTimes;
     char *sendbuf = NULL;
     long len = 0;
+    long *usednum = NULL;
     char *filestring = NULL;
     char md5buf[33] = {0};
     long filesize = 0;
@@ -1298,6 +1310,7 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                       DB_PASSWORD, DB_NAME,0,NULL,0))
         {
             printf("Error connecting to SECOND_DB_HOST_IP:%s\n",mysql_error(&mysql));
+            //updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
             return;
         }
     }
@@ -1325,6 +1338,8 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                     if (NULL == sendbuf)
                     {
                         printf("no memory file<%s>\n", row[1]);
+                        mysql_close(&mysql);
+                         updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                         return ;
                     }
                     len = bashStrPack(row[1], sendbuf);         
@@ -1335,6 +1350,8 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                     if (NULL == filestring)
                     {
                         printf("no memory file<%s>\n", row[1]);
+                        mysql_close(&mysql);
+                        updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                         return ;
                     }
                     sprintf(filestring, "%s%s", FILE_DIR, row[1]);
@@ -1346,13 +1363,18 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                         file.close();
                         delete []filestring;
                         printf("file<%s> doesnot exist\n", row[1]);
+                        mysql_close(&mysql);
+                        updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                         return ;
                     }
                     if (0 != getFileMd5(filestring, md5buf))
                     {
                         file.close();
                         delete []filestring;
+                        cout << md5buf << endl;
                         printf("file<%s> get md5 error\n", row[1]);
+                        mysql_close(&mysql);
+                        updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                         return ;
                     }
                     delete[]filestring;
@@ -1361,6 +1383,8 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                     if (NULL == sendbuf)
                     {
                         printf("no memory file<%s>\n", row[1]);
+                        mysql_close(&mysql);
+                        updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                         return ;
                     }
 
@@ -1390,6 +1414,7 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                         {
                             printf("filePubPack,file type error\n");
                             delete []sendbuf;
+                            updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
                             return ;
                         }
                     }
@@ -1408,26 +1433,39 @@ void taskretryproc(char *taskId, char *client_ip, char *client_port, char *retry
                     assert(NULL != sendbuf);
 
                 }
-
+                usednum = new long;
+                if (usednum == NULL)
+                {
+                    cout << "new used num error" << endl;
+                }
+                *usednum = 0;
+                PACK_BLOB blob(sendbuf, len, NULL, usednum);
                 memused = get_memoccupy();
                 //printf("memused:<%f>\n", memused);
                 if (memused < 80.0)
                 {
-                    ret = publish(taskId, client_ip, client_port, sendbuf, len);
+                    ret = publish(taskId, client_ip, client_port, &blob);
                     if (PUBLISH_SUCCESS == ret)
                     {
-                        insertT_execute(taskId, client_ip, client_port, true);
+                        updateT_execute(taskId, client_ip, client_port, retryTimes + 1, true);
                     }
                     else if (SEND_TO_CLIENT_FAILED == ret)
                     {
                         printf("taskpublish failed taskid<%s>, client_ip<%s>, client_port<%s>\n", taskId, client_ip, client_port);
-                        insertT_execute(taskId, client_ip, client_port, false);
-                        client_dead_proc(client_ip, client_port);
+                        updateT_execute(taskId, client_ip, client_port,retryTimes + 1, false);
+                        if (retryTimes == 2)
+                        {
+                            client_dead_proc(client_ip, client_port);
+                        }
+                        delete usednum;
+                        delete sendbuf;
                     }
                     else
                     {
                         printf("taskpublish failed taskid<%s>, client_ip<%s>, client_port<%s>\n", taskId, client_ip, client_port);
-                        //insertT_execute(taskId, client_ip, client_port, false);
+                        updateT_execute(taskId, client_ip, client_port, retryTimes + 1, false);
+                        delete usednum;
+                        delete sendbuf;
                     }
                     
                    
@@ -1563,8 +1601,8 @@ void heart_protocol_mysql_update(char *clientIp, unsigned int clientPort, char *
         res = mysql_use_result(&mysql);
         if(NULL != res)
         {
+            row = mysql_fetch_row(res);
             /*不存在这个客户端的记录，则新加入*/
-            row = mysql_fetch_row(res))
             if (NULL == row)
             {
                 updatesqltmp << "insert into T_connect(client_ip, client_port, server_ip, client_state) values ('" << \
@@ -1580,7 +1618,12 @@ void heart_protocol_mysql_update(char *clientIp, unsigned int clientPort, char *
             /*存在这个客户端的记录，则更新连接状态*/
             else
             {
-                updatesqltmp << "update T_connect set client_state = " << state << " where client_ip = '" << clientIp << \
+                if (0 != strncmp(serverIp, row[3], strlen(row[3])))
+                {
+                    updateT_execute(NULL, clientIp, row[2], 0, false);
+                }
+                
+                updatesqltmp << "update T_connect set client_state = " << state << ",server_ip= '" << serverIp<< "' where client_ip = '" << clientIp << \
                            "' and client_port = " << clientPort << ";" << endl;
                 sql = updatesqltmp.str();
                 mysql_free_result(res);
@@ -1589,10 +1632,7 @@ void heart_protocol_mysql_update(char *clientIp, unsigned int clientPort, char *
                 {
                     printf("update failed, ret<%d>, <%s>\n", ret, mysql_error(&mysql));
                 }
-                if (0 != strncmp(serverIp, row[3], strlen(row[3])))
-                {
-                    updateT_execute(NULL, clientIp, clientPort, 0, false);
-                }
+             
             }
         }
         else 

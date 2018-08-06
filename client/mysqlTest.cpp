@@ -103,7 +103,17 @@ void my_query()
     }
     if (!mysql_real_connect(&mysql, "10.242.170.126", "root", "123456", "taskPublish", 0, NULL, 0))
     {
-        printf("connect mysql failed\n");
+        printf("connect mysql 10.242.170.126 failed\n");
+        if(!mysql_real_connect(&mysql,"10.242.171.104","root",
+                  "123456","taskPublish",0,NULL,0))
+        {
+            printf("connect mysql 10.242.171.104 falied\n");
+        }
+     
+    }
+    else
+    {
+        printf("Connected....10.242.170.126\n");
     }
     string sql = "select * from T_connect;";
     if (!mysql_query(&mysql, sql.c_str()))
@@ -398,6 +408,11 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
     {
         printf("Error connecting to database:%s\n",mysql_error(&mysql));
     }
+    else if(!mysql_real_connect(&mysql,"10.242.171.104","root",
+                     "123456","taskPublish",0,NULL,0))
+    {
+
+    }
     else
     {
         printf("Connected........\n");
@@ -487,8 +502,8 @@ void update_filePublish(int taskId, char *client_ip, int client_port, bool execu
 
 int main()
 {
-
-    first_test();
+    my_query();
+    //first_test();
     //update_filePublish(1, "10.242.170.126", 9255, false);
     return 0;
  }

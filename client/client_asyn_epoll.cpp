@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -45,6 +46,7 @@ bool firsttime = true;
 unsigned char filehead[512];
 char filename[FILE_NAME_SIZE];
 unsigned char file[SO_RCVBUF_SIZE];
+char serverip[20] ={0};
 static int listenfd;
 int gport;
 static struct itimerval oldtv;
@@ -153,20 +155,22 @@ void signal_handler(int param)
     {
         printf("Create socket fd failed！\n"); 
     }
-
-    loop:
-    int iRet = ApiGetRoute(qos_req, tm_out, err_msg);
-    if(iRet < 0)
+    if (serverip[0] == '\0')
     {
-        cout << "iRet: " << iRet << endl;
-        cout << "err msg: " << err_msg << endl;
-        return;
+        int iRet = ApiGetRoute(qos_req, tm_out, err_msg);
+        if(iRet < 0)
+        {
+            cout << "iRet: " << iRet << endl;
+            cout << "err msg: " << err_msg << endl;
+            return;
+        }
+        strncpy(serverip, qos_req._host_ip.c_str(), strlen(qos_req._host_ip.c_str()));
     }
-
+    Tryconnect:
     /*fix-me通过L5获得一个最佳的ip*/
     server_addr.sin_family  = AF_INET;
     //inet_pton(AF_INET, IP, (void *)server_addr.sin_addr.s_addr);
-    server_addr.sin_addr.s_addr = inet_addr(qos_req._host_ip.c_str());
+    server_addr.sin_addr.s_addr = inet_addr(serverip);
     server_addr.sin_port = htons(9248);
 
     if (connect(client_socketfd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
@@ -189,6 +193,18 @@ void signal_handler(int param)
     
     ret = ApiRouteResultUpdate(qos_req, 0, tm_out,err_msg); 
     close(client_socketfd);
+    return;
+    
+    loop:
+    int iRet = ApiGetRoute(qos_req, tm_out, err_msg);
+    if(iRet < 0)
+    {
+        cout << "iRet: " << iRet << endl;
+        cout << "err msg: " << err_msg << endl;
+        return;
+    }
+    strncpy(serverip, qos_req._host_ip.c_str(), strlen(qos_req._host_ip.c_str()));
+    goto Tryconnect;
 }  
 void *hello(void *ptr)
 {
@@ -310,6 +326,13 @@ int CreateTcpListenSocket()
     setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (void *)&optval, sizeof(optval));
     int nRecvBuf = SO_RCVBUF_SIZE;//设置为320K
     setsockopt(sockfd ,SOL_SOCKET, SO_RCVBUF,(const char*)&nRecvBuf,sizeof(int));
+    
+    int  flag = 1;
+    ret = setsockopt( sockfd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(flag) );
+    if (ret == -1) {
+      printf("Couldn't setsockopt(TCP_NODELAY)\n");
+      return -1;
+    }
     /*
     //设置SO_LINGER选项(防范CLOSE_WAIT挂住所有套接字)
     optval1.l_onoff = 0;
@@ -439,11 +462,11 @@ void bash_stringproc(int sockfd, unsigned char *recvBuff)
     bash_len = (int)(recvBuff[3] & 0xFF);
     memcpy(buf, recvBuff + 4, bash_len);
     buf[bash_len] = '\0';
-    printf("bash_stringproc: execute bash:<%s>\n", buf);
+    //printf("bash_stringproc: execute bash:<%s>\n", buf);
 
     execute_bash(buf, resultbuf);
     result_len = strlen(resultbuf);
-    printf("result:<%s>\n", resultbuf);
+    //printf("result:<%s>\n", resultbuf);
     replybuf[0] = 0xFF;
     replybuf[1] = 0xEE;
     replybuf[2] = 0x14;
@@ -460,6 +483,123 @@ void bash_stringproc(int sockfd, unsigned char *recvBuff)
     delete []resultbuf;
     delete []replybuf;
     return;
+}
+void configupdate(char * filename)
+{
+    ifstream configFile;
+    char mvhere[60] = {0};
+    char local_File[60]  = {0};
+    char rmdirbuf[60] = {0};
+    string file_last;
+    string str_line;
+    string line_d;
+    string zs("#");
+    int filesize;
+    char *filecon = NULL;
+    sprintf(mvhere, "%s%s%s%s", "sudo cp /etc/", filename, " ./ETC_" , filename);
+    system(mvhere);
+    sprintf(local_File, "%s%s", "./ETC_", filename);
+    configFile.open(filename);
+  
+    ifstream localfile(local_File, ios::in|ios::binary|ios::ate);
+    filesize = localfile.tellg();
+    filecon = new char[filesize];
+    localfile.seekg(0, ios::beg); 
+    localfile.read(filecon, filesize); 
+    localfile.close(); 
+    size_t total =0;
+    string strfile(filecon);
+    delete filecon;
+
+    if (configFile.is_open())
+    {
+        while (!configFile.eof())
+        {
+            getline(configFile, str_line);
+            
+            if (0 != str_line.size())
+            {
+                if ( str_line.compare(0, 1, "#") == 0 ) //注释
+                {
+                    line_d.assign(str_line, 1, str_line.size() - 1);
+                    size_t pos = line_d.find(' ');
+                    string str_key = line_d.substr(0, pos);
+                    string str_value = line_d.substr(pos + 1);
+                    total = 0;
+                    while (size_t q = strfile.find(str_key + " " + str_value, total))
+                    {
+                        if( q != string::npos )
+                        {
+                            total = q+1;
+                            if (strfile[q-1] == '\n')
+                            {
+                                strfile.insert(q, zs);
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    
+                    }
+                    
+                }
+                else/*增加或者修改*/
+                {
+                    size_t pos = str_line.find(' ');
+                    string str_key = str_line.substr(0, pos);
+                    string str_value = str_line.substr(pos + 1);
+
+                    total = 0;
+                    while (size_t q = strfile.find(str_key + " ",total))
+                    {
+                        /*找到修改，找不到添加*/
+                        if( q != string::npos )
+                        {
+                            total = q+1;
+                            if (strfile[q-1] == '\n')
+                            {
+                                file_last.assign(strfile, q, strfile.size() - q);
+                                
+                                size_t f = file_last.find("\n");
+                                string value = file_last.substr(str_key.size() ,f- str_key.size() -1);
+                                
+                                strfile.erase(q+str_key.size()+1, value.size());
+                             
+                                strfile.insert(q+str_key.size()+1, str_value);
+                                break;
+                            }
+                            
+                        }
+                        else
+                        {
+                            
+                            strfile += str_key + " " + str_value + "\n";
+                            break;
+                        }
+                    }
+
+                    
+                }
+            }   
+        }
+    }
+    else
+    {    
+        cout << "Cannot open config file setting.ini, path: " << endl;
+
+    }
+    strfile += '\0';
+    sprintf(rmdirbuf, "%s%s", "rm -f ", local_File);
+    system(rmdirbuf);
+    filesize = strfile.size();
+    filecon = new char[filesize];
+    strncpy(filecon, strfile.c_str(), filesize);
+    ofstream local(local_File, ios::app | ios::binary);
+    local << filecon;
+    local.close();
+    delete filecon;
 }
 #if 0
 void UseConnectFd(int sockfd)
@@ -943,7 +1083,8 @@ void UseConnectFd(int sockfd)
         memcpy(replybuf + 4, filename, filenamelen);
         if (0 == memcmp(md5, md5file, 32))
         {
-            replybuf[4 + filenamelen] = 0x1; 
+            configupdate(filename); 
+            replybuf[4 + filenamelen] = 0x1;
             printf("CONFIG PUBLISH UPDATE SUCCESS!<%d>\n", gport);
         }
         else
@@ -982,6 +1123,7 @@ void UseConnectFd(int sockfd)
         sprintf(chmodbuf, "%s%s", "./", filename);
         execute_bash(chmodbuf, result);
         result_len = strlen(result);
+        printf("result<%s>result_len<%d>\n", result, result_len);
         resultbuf[5 + filenamelen] = (int) ((result_len >> 8) & 0xFF);
         resultbuf[6 + filenamelen] = result_len & 0xFF;
         memcpy(resultbuf+7+filenamelen, result, result_len);
